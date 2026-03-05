@@ -119,6 +119,41 @@ export default function Home() {
       <Scene3D />
       <InstructionOverlay />
 
+      {/* Click-anywhere overlay — shown before first Start, fades out on click */}
+      <div
+        onClick={handleStart}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(0, 0, 0, 0.52)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 45,
+          cursor: "pointer",
+          opacity: hasStarted ? 0 : 1,
+          pointerEvents: hasStarted ? "none" : "auto",
+          transition: "opacity 0.6s ease",
+        }}
+      >
+        <p
+          style={{
+            color: "#f0c8a0",
+            fontFamily: "Georgia, 'Times New Roman', serif",
+            fontSize: "clamp(1rem, 2.5vw, 1.4rem)",
+            fontStyle: "italic",
+            letterSpacing: "0.06em",
+            textAlign: "center",
+            textShadow: "0 0 24px rgba(232,168,124,0.55), 0 2px 8px rgba(0,0,0,0.8)",
+            userSelect: "none",
+            pointerEvents: "none",
+          }}
+        >
+          kamu bisa click dimana aja, cantik
+        </p>
+      </div>
+
       {/* Stop button — visible only while animation is running */}
       {hasStarted && !isStopped && (
         <button

@@ -7,9 +7,9 @@ import { useCinematicStore } from "@/store/cinematic-store";
 
 // ── Starting position ──────────────────────────────────────────────
 const CAM_X = 0;
-const CAM_Y = 2.0;
-const CAM_Z = 7.0;
-const DIST_DEFAULT = Math.sqrt(CAM_X ** 2 + CAM_Y ** 2 + CAM_Z ** 2); // ≈ 7.28
+const CAM_Y = 3.2;
+const CAM_Z = 8.5;
+const DIST_DEFAULT = Math.sqrt(CAM_X ** 2 + CAM_Y ** 2 + CAM_Z ** 2); // ≈ 9.08
 
 // ── Phase targets ──────────────────────────────────────────────────
 const DIST_ZOOMED    = 3.5;   // up close to the heart

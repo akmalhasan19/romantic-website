@@ -61,14 +61,13 @@ export function CenterSphere() {
   }, [particleCount]);
   /* eslint-enable react-hooks/purity */
 
-  useFrame((state) => {
-    if (!pointsRef.current) return;
-    pointsRef.current.rotation.y = state.clock.elapsedTime * 0.2;
+  useFrame(() => {
+    // Love 3D stays static — camera orbits around it instead
   });
 
   return (
     <group>
-      <points ref={pointsRef}>
+      <points ref={pointsRef} rotation={[0, -Math.PI * 0.79, 0]}>
         <bufferGeometry>
           <bufferAttribute
             attach="attributes-position"
