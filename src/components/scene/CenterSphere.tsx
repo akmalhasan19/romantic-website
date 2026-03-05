@@ -10,7 +10,7 @@ export function CenterSphere() {
   const matRef      = useRef<THREE.PointsMaterial>(null);
   const isInside    = useCinematicStore((s) => s.isInsideHeart);
 
-  const particleCount = 10500;
+  const particleCount = 4000;
 
   // Soft radial sprite so each particle has a subtle glow.
   const circleTexture = useMemo(() => {
@@ -36,10 +36,8 @@ export function CenterSphere() {
     const pos = new Float32Array(particleCount * 3);
     let i = 0;
 
-    // Heart implicit equation: (x^2 + 9/4*y^2 + z^2 - 1)^3 - x^2*z^3 - 9/80*y^2*z^3 <= 0
-    // Mapped to Three.js coordinates (Y is up)
+    // Heart implicit equation
     while (i < particleCount) {
-      // Random point in bounding box [-1.5, 1.5]
       const x = (Math.random() - 0.5) * 3;
       const y = (Math.random() - 0.5) * 3;
       const z = (Math.random() - 0.5) * 3;
@@ -53,7 +51,6 @@ export function CenterSphere() {
       const val = a * a * a - x2 * y3 - 0.1125 * z2 * y3;
 
       if (val <= 0.0) {
-        // Bigger shape than before so "Love 3D" looks more dominant.
         pos[i * 3] = x * 3.1;
         pos[i * 3 + 1] = y * 3.1;
         pos[i * 3 + 2] = z * 3.1;
@@ -66,20 +63,7 @@ export function CenterSphere() {
 
   useFrame((state) => {
     if (!pointsRef.current) return;
-    const t = state.clock.elapsedTime;
-
-    // Smooth rotation
-    pointsRef.current.rotation.y = t * 0.2;
-
-    // Subtle pulsing heartbeat effect
-    const scale = 1 + Math.sin(t * 3) * 0.03 + Math.sin(t * 1.5) * 0.05;
-    pointsRef.current.scale.set(scale, scale, scale);
-
-    // Fade particles when camera is inside the heart so text is legible
-    if (matRef.current) {
-      const targetOpacity = isInside ? 0.28 : 0.88;
-      matRef.current.opacity += (targetOpacity - matRef.current.opacity) * 0.04;
-    }
+    pointsRef.current.rotation.y = state.clock.elapsedTime * 0.2;
   });
 
   return (
@@ -93,7 +77,7 @@ export function CenterSphere() {
         </bufferGeometry>
         <pointsMaterial
           ref={matRef}
-          size={0.078}
+          size={0.13}
           color="#ff2a2a"
           transparent
           opacity={0.88}

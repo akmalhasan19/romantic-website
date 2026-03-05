@@ -11,8 +11,8 @@ export function ScenePostProcessing() {
     <EffectComposer enableNormalPass={false}>
       <Bloom
         intensity={bloomIntensity}
-        luminanceThreshold={0.2}
-        luminanceSmoothing={0.9}
+        luminanceThreshold={0.35}
+        luminanceSmoothing={0.7}
         mipmapBlur
         blendFunction={BlendFunction.ADD}
       />

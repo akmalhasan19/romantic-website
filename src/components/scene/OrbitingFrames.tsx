@@ -9,6 +9,7 @@ import { useGalleryStore } from "@/store/gallery-store";
 const FRAME_W = 0.5;
 const FRAME_H = 0.67;
 const INSET = 0.04;
+const DISK_ROTATE_SPEED = 0.04; // rad/s ≈ 2.3°/s, rightward rotation
 
 /* ─── Shared glow sprite ─────────────────────────────────────────── */
 
@@ -38,9 +39,11 @@ function InnerRingParticles() {
     // [minR, maxR, count, ySpread, radialBias]
     const zones: [number, number, number, number, number][] = [
       // Overlap zone near the heart
-      [2.2, 3.8, 4500, 0.10, 1.3],
-      // Core inner-orbit band — extremely dense, very flat disc
-      [3.8, 6.2, 24000, 0.05, 1.0],
+      [2.2, 3.8, 1800, 0.10, 1.3],
+      // Core inner-orbit band
+      [3.8, 6.0, 4500, 0.05, 1.0],
+      // Extended inner band
+      [6.0, 7.5, 2200, 0.10, 1.0],
     ];
 
     const totalCount = zones.reduce((s, z) => s + z[2], 0);
@@ -69,7 +72,7 @@ function InnerRingParticles() {
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
       <pointsMaterial
-        size={0.08}
+        size={0.12}
         color="#ffffff"
         transparent
         opacity={0.65}
@@ -90,9 +93,10 @@ function OuterRingParticles() {
 
   const positions = useMemo(() => {
     const zones: [number, number, number, number, number][] = [
-      [6.2, 8.0, 5500, 0.18, 1.0],
-      [8.0, 9.5, 4500, 0.28, 1.0],
-      [9.5, 11.0, 3000, 0.40, 1.0],
+      [7.5,  9.5,  2200, 0.20, 1.0],
+      [9.5,  11.5, 1800, 0.32, 1.0],
+      [11.5, 13.0, 1200, 0.45, 1.0],
+      [13.0, 15.0,  700, 0.60, 1.0],
     ];
 
     const totalCount = zones.reduce((s, z) => s + z[2], 0);
@@ -121,7 +125,7 @@ function OuterRingParticles() {
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
       <pointsMaterial
-        size={0.065}
+        size={0.09}
         color="#ffffff"
         transparent
         opacity={0.42}
@@ -141,10 +145,12 @@ function InstancedPhotoFrames({
   textures,
   count,
   scatteredPositions,
+  diskAngleRef,
 }: {
   textures: THREE.Texture[];
   count: number;
   scatteredPositions: THREE.Vector3[];
+  diskAngleRef: React.RefObject<number>;
 }) {
   const borderRef = useRef<THREE.InstancedMesh>(null);
   const photoRefs = useRef<Map<number, THREE.InstancedMesh>>(new Map());
@@ -179,8 +185,10 @@ function InstancedPhotoFrames({
     const border = borderRef.current;
     if (!border) return;
 
-    const t = state.clock.elapsedTime;
     const cam = state.camera.quaternion;
+    const angle = diskAngleRef.current ?? 0;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
 
     // Reset per-texture counters
     if (countersRef.current.length !== texLen)
@@ -191,10 +199,12 @@ function InstancedPhotoFrames({
       const bp = scatteredPositions[i];
       if (!bp) continue;
 
-      const floatY = Math.sin(t * 0.5 + i) * 0.4;
+      // Rotate position around Y axis by disk angle
+      const rx = bp.x * cosA - bp.z * sinA;
+      const rz = bp.x * sinA + bp.z * cosA;
 
-      // Billboard facing camera
-      dummy.position.set(bp.x, bp.y + floatY, bp.z);
+      // Billboard facing camera (positions are in world space — billboard is correct)
+      dummy.position.set(rx, bp.y, rz);
       dummy.quaternion.copy(cam);
       dummy.scale.setScalar(1);
       dummy.updateMatrix();
@@ -250,12 +260,22 @@ function InstancedPhotoFrames({
 
 function ScatteredFramesInner({ textures }: { textures: THREE.Texture[] }) {
   const particleCount = useGalleryStore((s) => s.settings.particle_count);
-  const count = Math.min(particleCount, 500);
+  const count = Math.min(particleCount, 160);
+
+  const diskAngleRef = useRef(0);
+  const ringGroupRef = useRef<THREE.Group>(null);
+
+  useFrame((_state, delta) => {
+    diskAngleRef.current += DISK_ROTATE_SPEED * delta;
+    if (ringGroupRef.current) {
+      ringGroupRef.current.rotation.y = diskAngleRef.current;
+    }
+  });
 
   /* eslint-disable react-hooks/purity */
   const scatteredPositions = useMemo(() => {
     const minRadius = 5.5;
-    const maxRadius = 11;
+    const maxRadius = 14;
 
     return Array.from({ length: count }, (_, i) => {
       const angle = (i / count) * Math.PI * 2;
@@ -273,12 +293,15 @@ function ScatteredFramesInner({ textures }: { textures: THREE.Texture[] }) {
 
   return (
     <group>
-      <InnerRingParticles />
-      <OuterRingParticles />
+      <group ref={ringGroupRef}>
+        <InnerRingParticles />
+        <OuterRingParticles />
+      </group>
       <InstancedPhotoFrames
         textures={textures}
         count={count}
         scatteredPositions={scatteredPositions}
+        diskAngleRef={diskAngleRef}
       />
     </group>
   );

@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, AdaptiveDpr } from "@react-three/drei";
+import { AdaptiveDpr, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { CenterSphere } from "./CenterSphere";
 import { OrbitingFrames } from "./OrbitingFrames";
@@ -10,7 +10,6 @@ import { FloatingMessage } from "./FloatingMessage";
 import { CinematicCamera } from "./CinematicCamera";
 import { ScenePostProcessing } from "./ScenePostProcessing";
 import { useGalleryStore } from "@/store/gallery-store";
-import { useCinematicStore } from "@/store/cinematic-store";
 
 function createCircleTex() {
   const canvas = document.createElement("canvas");
@@ -46,9 +45,9 @@ function randomSpherePoints(count: number, minR: number, maxR: number): Float32A
 function AmbientSparkles() {
   const tex = useMemo(() => createCircleTex(), []);
 
-  const close  = useMemo(() => randomSpherePoints(250,   8, 16), []);
-  const mid    = useMemo(() => randomSpherePoints(5000, 25, 45), []);
-  const far    = useMemo(() => randomSpherePoints(7000, 45, 90), []);
+  const close  = useMemo(() => randomSpherePoints(150,   8, 16), []);
+  const mid    = useMemo(() => randomSpherePoints(1200, 25, 45), []);
+  const far    = useMemo(() => randomSpherePoints(1500, 45, 90), []);
 
   const common = {
     blending: THREE.AdditiveBlending,
@@ -66,19 +65,19 @@ function AmbientSparkles() {
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[close, 3]} />
         </bufferGeometry>
-        <pointsMaterial {...common} size={0.11} opacity={0.80} />
+        <pointsMaterial {...common} size={0.15} opacity={0.80} />
       </points>
       <points>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[mid, 3]} />
         </bufferGeometry>
-        <pointsMaterial {...common} size={0.07} opacity={0.45} />
+        <pointsMaterial {...common} size={0.09} opacity={0.45} />
       </points>
       <points>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[far, 3]} />
         </bufferGeometry>
-        <pointsMaterial {...common} size={0.05} opacity={0.20} />
+        <pointsMaterial {...common} size={0.07} opacity={0.20} />
       </points>
     </>
   );
@@ -86,19 +85,17 @@ function AmbientSparkles() {
 
 export function Scene3D() {
   const triggerScatter = useGalleryStore((s) => s.triggerScatter);
-  const phase = useCinematicStore((s) => s.phase);
 
   return (
     <div className="h-full w-full" onDoubleClick={triggerScatter}>
       <Canvas
-        camera={{ position: [0, 5, 20], fov: 60 }}
-        dpr={[1, 1.5]}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+        camera={{ position: [0, 5, 18], fov: 60 }}
+        dpr={[1, 1.25]}
+        gl={{ antialias: false, alpha: false, powerPreference: "high-performance" }}
         style={{ background: "#050505" }}
       >
         <AdaptiveDpr pixelated />
         <ambientLight intensity={0.3} />
-        <directionalLight position={[5, 10, 5]} intensity={0.15} />
 
         <AmbientSparkles />
 
@@ -111,16 +108,13 @@ export function Scene3D() {
           <ScenePostProcessing />
         </Suspense>
 
-        {/* Manual orbit only available during ORBIT phase */}
-        {phase === "ORBIT" && (
-          <OrbitControls
-            enablePan={false}
-            minDistance={3}
-            maxDistance={30}
-            enableDamping
-            dampingFactor={0.05}
-          />
-        )}
+        <OrbitControls
+          enablePan={false}
+          minDistance={3}
+          maxDistance={40}
+          enableDamping
+          dampingFactor={0.05}
+        />
       </Canvas>
     </div>
   );

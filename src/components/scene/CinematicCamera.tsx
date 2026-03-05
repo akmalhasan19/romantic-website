@@ -1,174 +1,255 @@
 "use client";
 
-/**
- * CinematicCamera
- * ─────────────────────────────────────────────────────────────────────────────
- * Three camera phases, synced to an audio element:
- *
- *  ORBIT     — slow circular orbit around Love 3D (intro)
- *  DIVE      — GSAP-powered dive toward center, FOV ramp (chorus build-up)
- *  IMMERSIVE — inside the heart, slow drift, muted rotation
- *
- * Audio file: /music.mp3  (place the song in /public/music.mp3)
- * Chorus timestamp is configurable via CHORUS_START_SEC.
- *
- * Controls are disabled during DIVE / IMMERSIVE so the orbit camera takes over.
- */
-
 import { useEffect, useRef } from "react";
-import { useThree, useFrame } from "@react-three/fiber";
-import gsap from "gsap";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useCinematicStore } from "@/store/cinematic-store";
 
-// ── Tune these to match "Message in a Bottle (Taylor's Version)" ──────────────
-// Chorus first hits at ~1:05 in the song. Adjust as needed.
-const CHORUS_START_SEC = 65;
+// ── Starting position ──────────────────────────────────────────────
+const CAM_X = 0;
+const CAM_Y = 2.0;
+const CAM_Z = 7.0;
+const DIST_DEFAULT = Math.sqrt(CAM_X ** 2 + CAM_Y ** 2 + CAM_Z ** 2); // ≈ 7.28
 
-// ── Camera geometry ────────────────────────────────────────────────────────────
-const ORBIT_RADIUS   = 20;   // distance while orbiting
-const ORBIT_SPEED    = 0.10; // radians / second
-const ORBIT_Y        = 5;    // camera height during orbit
-const HEART_RADIUS   = 5;    // distance threshold: "inside" heart
-const FOV_NORMAL     = 60;
-const FOV_DIVE_PEAK  = 90;
+// ── Phase targets ──────────────────────────────────────────────────
+const DIST_ZOOMED    = 3.5;   // up close to the heart
+const DIST_PULLBACK  = 15.0;  // well beyond outer orbit ring (~11)
+const PULLBACK_Y     = 1.2;   // just slightly above orbit plane (orbit ySpread ≤ 0.4)
+const PULLBACK_LOOK_Y = -0.4; // subtle downward tilt — barely below horizon
 
-// ── Drift params (immersive phase) ─────────────────────────────────────────────
-const DRIFT_AMP_X  = 0.8;
-const DRIFT_AMP_Y  = 0.5;
-const DRIFT_SPEED  = 0.25;
+// ── Timing ────────────────────────────────────────────────────────
+const DOLLY_DURATION    = 4.5;  // seconds — cinematic approach
+const ORBIT_DURATION    = 1.4;  // seconds — linger close to the heart
+const PULLBACK_DURATION = 8.0;  // seconds — orbiting retreat
+const FINAL_ORBIT_DURATION = 3.5; // seconds — slow orbit at final distance after pullback
+const ARC_DURATION         = 5.0; // seconds — 145° horizontal sweep with elevation bell curve
+const ARC_SWEEP            = (180 * Math.PI) / 180; // radians — exact horizontal sweep of the arc
+const ORBIT_SPEED       = 0.18; // rad/s — used for dolly-in blend
+const PULLBACK_ORBIT_SPEED = 0.18; // rad/s during pullback — constant speed, ~65° total sweep
+// Dolly-in orbit blend starts at this progress threshold so the orbit
+// rotation gradually fades in before dolly-in finishes — no freeze between phases.
+const ORBIT_BLEND_START = 0.72;
+
+// Normalised initial speed for arc easing — ensures arc starts at the same
+// angular velocity as final-orbit (no perceived stop at the transition).
+// Derived from: initial_az_speed = ARC_SWEEP * v0 / ARC_DURATION = PULLBACK_ORBIT_SPEED
+const ARC_V0 = (PULLBACK_ORBIT_SPEED * ARC_DURATION) / ARC_SWEEP;
+
+// ── Easing ────────────────────────────────────────────────────────
+// Smooth start AND smooth stop — camera decelerates into the heart, no snap.
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+// Slow start then smooth stop — cinematic ease-in-out for pullback
+function easeInOutQuart(t: number): number {
+  return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+}
+// Arc easing: starts at final-orbit angular speed (v0), decelerates to stop.
+// Cubic Hermite with f(0)=0, f'(0)=v0, f(1)=1, f'(1)=0.
+function easeArcOut(t: number): number {
+  const v0 = ARC_V0;
+  return (v0 - 2) * t * t * t + (3 - 2 * v0) * t * t + v0 * t;
+}
+
+type AnimPhase = "idle" | "dolly-in" | "orbit" | "pullback" | "final-orbit" | "arc" | "done";
 
 export function CinematicCamera() {
-  const { camera, gl } = useThree();
-  const phase          = useCinematicStore((s) => s.phase);
-  const setPhase       = useCinematicStore((s) => s.setPhase);
-  const setBloom       = useCinematicStore((s) => s.setBloomIntensity);
-  const setInside      = useCinematicStore((s) => s.setIsInsideHeart);
+  const { camera } = useThree();
+  const isZoomedIn   = useCinematicStore((s) => s.isZoomedIn);
+  const cinematicKey = useCinematicStore((s) => s.cinematicKey);
+  const isStopped    = useCinematicStore((s) => s.isStopped);
 
-  const audioRef       = useRef<HTMLAudioElement | null>(null);
-  const diveFiredRef   = useRef(false);
-  const gsapCtxRef     = useRef<gsap.Context | null>(null);
-  const orbitAngleRef  = useRef(Math.PI); // Start behind center
+  // Internal animation state — all refs to avoid re-renders
+  const phaseRef             = useRef<AnimPhase>("idle");
+  const tRef                 = useRef(0);
+  const startDistRef         = useRef(DIST_DEFAULT);
+  const orbitTimeRef         = useRef(0);
+  const pullbackAzimuthRef   = useRef(0);
+  const arcStartAzimuthRef   = useRef(0);
+  const pullbackStartDistRef  = useRef(DIST_ZOOMED);
+  const pullbackStartYRef     = useRef(0);
 
-  // ── Bootstrap audio ──────────────────────────────────────────────────────────
+  const isZoomedInRef  = useRef(isZoomedIn);
+  const isStoppedRef   = useRef(isStopped);
+  const prevZoomedRef  = useRef(false);
+
+  useEffect(() => { isZoomedInRef.current = isZoomedIn; }, [isZoomedIn]);
+  useEffect(() => { isStoppedRef.current  = isStopped;  }, [isStopped]);
+
+  // Initial camera placement
   useEffect(() => {
-    const audio = new Audio("/music.mp3");
-    audio.loop  = false;
-    audio.preload = "auto";
-    audioRef.current = audio;
-
-    // Auto-play on first user interaction to satisfy browser autoplay policy
-    const tryPlay = () => {
-      audio.play().catch(() => {/* user hasn't interacted yet — silent fail */});
-      window.removeEventListener("pointerdown", tryPlay);
-      window.removeEventListener("keydown", tryPlay);
-    };
-    window.addEventListener("pointerdown", tryPlay);
-    window.addEventListener("keydown", tryPlay);
-
-    return () => {
-      audio.pause();
-      audio.src = "";
-      window.removeEventListener("pointerdown", tryPlay);
-      window.removeEventListener("keydown", tryPlay);
-      gsapCtxRef.current?.revert();
-    };
-  }, []);
-
-  // ── Set initial camera position ───────────────────────────────────────────────
-  useEffect(() => {
-    camera.position.set(0, ORBIT_Y, ORBIT_RADIUS);
+    camera.position.set(CAM_X, CAM_Y, CAM_Z);
     camera.lookAt(0, 0, 0);
-    (camera as THREE.PerspectiveCamera).fov = FOV_NORMAL;
+    (camera as THREE.PerspectiveCamera).fov = 60;
     (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
   }, [camera]);
 
-  // ── DIVE sequence (triggered once) ───────────────────────────────────────────
-  function triggerDive() {
-    if (diveFiredRef.current) return;
-    diveFiredRef.current = true;
-    setPhase("DIVE");
-    setBloom(2.5);
+  // "Start Over": teleport to start, reset all state → begin dolly-in immediately
+  useEffect(() => {
+    if (cinematicKey === 0) return;
+    camera.position.set(CAM_X, CAM_Y, CAM_Z);
+    camera.lookAt(0, 0, 0);
+    startDistRef.current     = DIST_DEFAULT;
+    tRef.current             = 0;
+    orbitTimeRef.current     = 0;
+    prevZoomedRef.current    = true;  // already zoomed-in after restartCinematic
+    phaseRef.current         = "dolly-in";
+  }, [cinematicKey, camera]);
 
-    const cam = camera as THREE.PerspectiveCamera;
-    const proxy = { fov: cam.fov };
+  // Priority 1 → runs after OrbitControls (priority 0)
+  useFrame((_state, delta) => {
+    if (isStoppedRef.current) return;
 
-    gsapCtxRef.current = gsap.context(() => {
-      gsap.timeline()
-        // 1. Rush toward center
-        .to(camera.position, {
-          x: 0, y: 0.5, z: 1.5,
-          duration: 3.5,
-          ease: "power4.inOut",
-        })
-        // 2. FOV ramp — "warp speed" feel
-        .to(proxy, {
-          fov: FOV_DIVE_PEAK,
-          duration: 2.5,
-          ease: "power3.in",
-          onUpdate: () => {
-            cam.fov = proxy.fov;
-            cam.updateProjectionMatrix();
-          },
-        }, "<")
-        // 3. Settle to immersive FOV
-        .to(proxy, {
-          fov: 75,
-          duration: 1.2,
-          ease: "power2.out",
-          onUpdate: () => {
-            cam.fov = proxy.fov;
-            cam.updateProjectionMatrix();
-          },
-          onComplete: () => {
-            setPhase("IMMERSIVE");
-            setBloom(1.2);
-          },
-        });
-    });
-  }
+    // First "Start" press: idle → dolly-in
+    if (isZoomedInRef.current && !prevZoomedRef.current && phaseRef.current === "idle") {
+      startDistRef.current  = camera.position.length();
+      tRef.current          = 0;
+      phaseRef.current      = "dolly-in";
+      prevZoomedRef.current = true;
+    }
 
-  // ── Per-frame logic ───────────────────────────────────────────────────────────
-  useFrame((_, delta) => {
-    const audio   = audioRef.current;
-    const camDist = camera.position.length();
+    // ── Phase: dolly-in ──────────────────────────────────────────────
+    if (phaseRef.current === "dolly-in") {
+      tRef.current = Math.min(1, tRef.current + delta / DOLLY_DURATION);
+      const eased   = easeInOutCubic(tRef.current);
+      const newDist = THREE.MathUtils.lerp(startDistRef.current, DIST_ZOOMED, eased);
+      camera.position.normalize().multiplyScalar(newDist);
 
-    // ── Audio timestamp → phase transitions ─────────────────────────────────
-    if (audio && !audio.paused) {
-      if (audio.currentTime >= CHORUS_START_SEC && phase === "ORBIT") {
-        triggerDive();
+      // Blend orbit rotation in gradually from ORBIT_BLEND_START → 1
+      // so the camera is already arcing before dolly-in completes.
+      if (tRef.current > ORBIT_BLEND_START) {
+        const blendT = (tRef.current - ORBIT_BLEND_START) / (1 - ORBIT_BLEND_START);
+        const orbitAngle = ORBIT_SPEED * delta * blendT;
+        const cos = Math.cos(orbitAngle);
+        const sin = Math.sin(orbitAngle);
+        const x = camera.position.x;
+        const z = camera.position.z;
+        camera.position.x = x * cos - z * sin;
+        camera.position.z = x * sin + z * cos;
+      }
+
+      camera.lookAt(0, 0, 0);
+
+      if (tRef.current >= 1) {
+        // Dolly-in done → enter close orbit phase (animation 2).
+        // Azimuth captured here so the orbit starts seamlessly from this exact position.
+        orbitTimeRef.current = 0;
+        tRef.current         = 0;
+        phaseRef.current     = "orbit";
+      }
+      return;
+    }
+
+    // ── Phase: orbit ─────────────────────────────────────────────────
+    // Camera lingers close to the heart, rotating LEFT — same direction
+    // as pullback so there is no direction-reversal snap at transition.
+    if (phaseRef.current === "orbit") {
+      orbitTimeRef.current += delta;
+      // Same rotation matrix as pullback's leftward sweep
+      const angle = ORBIT_SPEED * delta;
+      const cos   = Math.cos(angle);
+      const sin   = Math.sin(angle);
+      const x = camera.position.x;
+      const z = camera.position.z;
+      camera.position.x = x * cos - z * sin;
+      camera.position.z = x * sin + z * cos;
+      camera.lookAt(0, 0, 0);
+
+      if (orbitTimeRef.current >= ORBIT_DURATION) {
+        // Capture XZ horizontal distance so pullback starts at exactly this position.
+        pullbackAzimuthRef.current   = Math.atan2(camera.position.x, camera.position.z);
+        pullbackStartDistRef.current = Math.sqrt(camera.position.x ** 2 + camera.position.z ** 2);
+        pullbackStartYRef.current    = camera.position.y;
+        tRef.current     = 0;
+        phaseRef.current = "pullback";
+      }
+      return;
+    }
+
+    // ── Phase: pullback ───────────────────────────────────────────────
+    // Camera orbits the Love 3D while retreating — orbit speed fades to 0
+    // at the end so the stop feels natural, not abrupt.
+    if (phaseRef.current === "pullback") {
+      tRef.current = Math.min(1, tRef.current + delta / PULLBACK_DURATION);
+      const eased = easeInOutQuart(tRef.current);
+
+      // Constant rotation speed throughout pullback — evenly distributed from start to end
+      pullbackAzimuthRef.current -= PULLBACK_ORBIT_SPEED * delta;
+
+      // Radial distance and height both ease out
+      const dist = THREE.MathUtils.lerp(pullbackStartDistRef.current, DIST_PULLBACK, eased);
+      const y    = THREE.MathUtils.lerp(pullbackStartYRef.current,    PULLBACK_Y,    eased);
+
+      const az = pullbackAzimuthRef.current;
+      camera.position.set(
+        Math.sin(az) * dist,
+        y,
+        Math.cos(az) * dist
+      );
+
+      // LookAt drifts subtly below horizon as camera retreats
+      const lookY = THREE.MathUtils.lerp(0, PULLBACK_LOOK_Y, eased);
+      camera.lookAt(0, lookY, 0);
+
+      if (tRef.current >= 1) {
+        orbitTimeRef.current = 0;
+        phaseRef.current = "final-orbit";
       }
     }
 
-    // ── Track whether we're inside the heart radius ────────────────────────
-    setInside(camDist < HEART_RADIUS);
+    // ── Phase: final-orbit ───────────────────────────────────────────
+    // Slow orbit at DIST_PULLBACK for 2 s after pullback completes.
+    if (phaseRef.current === "final-orbit") {
+      orbitTimeRef.current += delta;
+      pullbackAzimuthRef.current -= PULLBACK_ORBIT_SPEED * delta;
+      const az = pullbackAzimuthRef.current;
+      camera.position.set(
+        Math.sin(az) * DIST_PULLBACK,
+        PULLBACK_Y,
+        Math.cos(az) * DIST_PULLBACK
+      );
+      camera.lookAt(0, PULLBACK_LOOK_Y, 0);
 
-    // ── ORBIT phase: circular camera movement ──────────────────────────────
-    if (phase === "ORBIT") {
-      orbitAngleRef.current += ORBIT_SPEED * delta;
-      const angle = orbitAngleRef.current;
-      camera.position.x = Math.sin(angle) * ORBIT_RADIUS;
-      camera.position.z = Math.cos(angle) * ORBIT_RADIUS;
-      camera.position.y = ORBIT_Y + Math.sin(angle * 0.3) * 1.5;
-      camera.lookAt(0, 0, 0);
+      if (orbitTimeRef.current >= FINAL_ORBIT_DURATION) {
+        // Capture the exact azimuth so arc can sweep precisely 180° from here
+        arcStartAzimuthRef.current = pullbackAzimuthRef.current;
+        tRef.current     = 0;
+        phaseRef.current = "arc";
+      }
     }
 
-    // ── IMMERSIVE phase: slow inner drift ─────────────────────────────────
-    if (phase === "IMMERSIVE") {
-      const t = performance.now() * 0.001;
-      const tx = Math.sin(t * DRIFT_SPEED) * DRIFT_AMP_X;
-      const ty = Math.cos(t * DRIFT_SPEED * 0.7) * DRIFT_AMP_Y;
-      camera.position.x += (tx - camera.position.x) * delta * 0.4;
-      camera.position.y += (ty - camera.position.y) * delta * 0.4;
-      camera.lookAt(0, 0, 0);
-    }
-  });
+    // ── Phase: arc ───────────────────────────────────────────────────────
+    // Sweeps exactly 180° to the opposite side of the orbit ring,
+    // continuing the leftward rotation throughout (eased in + out so it
+    // starts/stops smoothly). Elevation follows a bell curve — rises in the
+    // middle, returns to base at the end. Well below 90°, no gimbal lock.
+    if (phaseRef.current === "arc") {
+      tRef.current = Math.min(1, tRef.current + delta / ARC_DURATION);
+      const eased = easeArcOut(tRef.current);
 
-  // Expose audio element on the canvas DOM node so controls can call play/pause
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (gl.domElement as any).__cinematicAudio = audioRef.current;
-  }, [gl]);
+      // Azimuth sweeps exactly ARC_SWEEP radians leftward from the captured start
+      const az = arcStartAzimuthRef.current - ARC_SWEEP * eased;
+      pullbackAzimuthRef.current = az; // keep in sync for any future use
+
+      const arcR      = Math.sqrt(DIST_PULLBACK ** 2 + PULLBACK_Y ** 2);
+      const elevBase  = Math.atan2(PULLBACK_Y, DIST_PULLBACK); // ≈ 4.6°
+      const ARC_ELEV_END = 0.20; // ~47° final elevation — well above orbit line
+      // Elevation rises continuously from elevBase → elevBase + ARC_ELEV_END
+      // using the same eased progress, so it slows down in sync with azimuth.
+      const elev = elevBase + ARC_ELEV_END * eased;
+
+      camera.position.set(
+        arcR * Math.cos(elev) * Math.sin(az),
+        arcR * Math.sin(elev),
+        arcR * Math.cos(elev) * Math.cos(az)
+      );
+      camera.lookAt(0, 0, 0);
+
+      if (tRef.current >= 1) {
+        phaseRef.current = "done";
+      }
+    }
+  }, 1);
 
   return null;
 }
