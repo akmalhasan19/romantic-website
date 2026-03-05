@@ -27,31 +27,55 @@ export default function Home() {
   const stopCinematic      = useCinematicStore((s) => s.stopCinematic);
 
   const [hasStarted, setHasStarted] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef    = useRef<HTMLAudioElement | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    audioRef.current = new Audio("/message-in-a-bottle-taylor-swift.mp3");
-    audioRef.current.loop = false;
+    const audio = new Audio("/message-in-a-bottle-taylor-swift.mp3");
+    audio.loop = false;
+    audioRef.current = audio;
     return () => {
-      audioRef.current?.pause();
+      audio.pause();
+      audioCtxRef.current?.close();
     };
   }, []);
+
+  /** Wire audio element through a GainNode (once, on first play) */
+  function ensureAudioContext() {
+    if (audioCtxRef.current) return;
+    const ctx    = new AudioContext();
+    const source = ctx.createMediaElementSource(audioRef.current!);
+    const gain   = ctx.createGain();
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    audioCtxRef.current = ctx;
+    gainNodeRef.current = gain;
+  }
+
+  /** Fade the gain from 0 → 1 over 1 second, then play */
+  function playWithFadeIn() {
+    if (!audioRef.current) return;
+    ensureAudioContext();
+    const ctx  = audioCtxRef.current!;
+    const gain = gainNodeRef.current!;
+    if (ctx.state === "suspended") ctx.resume();
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(1, ctx.currentTime + 1);
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(() => {});
+  }
 
   function handleStart() {
     setHasStarted(true);
     toggleZoom();
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
-    }
+    playWithFadeIn();
   }
 
   function handleStartOver() {
     restartCinematic();
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
-    }
+    playWithFadeIn();
   }
 
   function handleStop() {

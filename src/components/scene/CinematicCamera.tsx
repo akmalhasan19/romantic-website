@@ -220,30 +220,36 @@ export function CinematicCamera() {
 
     // ── Phase: arc ───────────────────────────────────────────────────────
     // Sweeps exactly 180° to the opposite side of the orbit ring,
-    // continuing the leftward rotation throughout (eased in + out so it
-    // starts/stops smoothly). Elevation follows a bell curve — rises in the
-    // middle, returns to base at the end. Well below 90°, no gimbal lock.
+    // continuing the leftward rotation throughout.
+    // Azimuth uses easeArcOut so it starts at the exact final-orbit speed (no stop).
+    // Elevation uses easeInOutCubic (v0=0) so it begins rising only gently,
+    // never jarring at the transition. LookAt blends from the final-orbit target
+    // to (0,0,0) using the same soft elevation easing — full continuity.
     if (phaseRef.current === "arc") {
       tRef.current = Math.min(1, tRef.current + delta / ARC_DURATION);
-      const eased = easeArcOut(tRef.current);
+      const easedAz   = easeArcOut(tRef.current);       // matches final-orbit azimuth speed
+      const easedElev = easeInOutCubic(tRef.current);   // soft-start for elevation & lookAt
 
       // Azimuth sweeps exactly ARC_SWEEP radians leftward from the captured start
-      const az = arcStartAzimuthRef.current - ARC_SWEEP * eased;
+      const az = arcStartAzimuthRef.current - ARC_SWEEP * easedAz;
       pullbackAzimuthRef.current = az; // keep in sync for any future use
 
-      const arcR      = Math.sqrt(DIST_PULLBACK ** 2 + PULLBACK_Y ** 2);
-      const elevBase  = Math.atan2(PULLBACK_Y, DIST_PULLBACK); // ≈ 4.6°
-      const ARC_ELEV_END = 0.20; // ~47° final elevation — well above orbit line
-      // Elevation rises continuously from elevBase → elevBase + ARC_ELEV_END
-      // using the same eased progress, so it slows down in sync with azimuth.
-      const elev = elevBase + ARC_ELEV_END * eased;
+      const arcR     = Math.sqrt(DIST_PULLBACK ** 2 + PULLBACK_Y ** 2); // true sphere radius
+      const elevBase = Math.atan2(PULLBACK_Y, DIST_PULLBACK); // ≈ 4.6°
+      const ARC_ELEV_END = 0.30; // ~17° additional elevation above base
+      // Elevation rises softly (v=0 at start) so it doesn't feel like an immediate heave
+      const elev = elevBase + ARC_ELEV_END * easedElev;
 
       camera.position.set(
         arcR * Math.cos(elev) * Math.sin(az),
         arcR * Math.sin(elev),
         arcR * Math.cos(elev) * Math.cos(az)
       );
-      camera.lookAt(0, 0, 0);
+
+      // Blend lookAt from final-orbit's PULLBACK_LOOK_Y → 0 using the soft elevation
+      // easing, so the camera tilt is fully continuous at the final-orbit → arc boundary.
+      const lookY = THREE.MathUtils.lerp(PULLBACK_LOOK_Y, 0, easedElev);
+      camera.lookAt(0, lookY, 0);
 
       if (tRef.current >= 1) {
         phaseRef.current = "done";
