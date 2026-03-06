@@ -8,6 +8,7 @@ import { useGalleryStore } from "@/store/gallery-store";
 import { useCinematicStore } from "@/store/cinematic-store";
 import { Spinner } from "@/components/ui";
 import { InstructionOverlay } from "@/components/scene";
+import { SongSwitcher } from "@/components/scene/SongSwitcher";
 
 const Scene3D = dynamic(
   () =>
@@ -34,13 +35,19 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
   const isStopped = useCinematicStore((s) => s.isStopped);
   const stopCinematic = useCinematicStore((s) => s.stopCinematic);
   const resetCinematic = useCinematicStore((s) => s.resetCinematic);
+  const hasStarted = useCinematicStore((s) => s.hasStarted);
+  const setHasStarted = useCinematicStore((s) => s.setHasStarted);
+  const isCinematicDone = useCinematicStore((s) => s.isCinematicDone);
 
-  const [hasStarted, setHasStarted] = useState(false);
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
   const [isClosingEyes, setIsClosingEyes] = useState(false);
+  const [showSongSwitcher, setShowSongSwitcher] = useState(false);
+  const [activeTrack, setActiveTrack] = useState<"main" | "idle">("main");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const idleAudioRef = useRef<HTMLAudioElement | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const idleGainNodeRef = useRef<GainNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const musicUrl = useMemo(
@@ -65,10 +72,24 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
   useEffect(() => {
     setHasStarted(false);
     setIsClosingEyes(false);
+    setShowSongSwitcher(false);
+    setActiveTrack("main");
     audioRef.current?.pause();
+    idleAudioRef.current?.pause();
     resetCinematic();
     void fetchPublicData(slug);
   }, [fetchPublicData, resetCinematic, slug]);
+
+  useEffect(() => {
+    const idleAudio = new Audio("/Laufey - Valentine.mp3");
+    idleAudio.loop = true;
+    idleAudioRef.current = idleAudio;
+
+    return () => {
+      idleAudio.pause();
+      idleGainNodeRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const audio = new Audio(musicUrl);
@@ -88,6 +109,10 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
         setIsClosingEyes(true);
         timeoutId = setTimeout(() => {
           setIsClosingEyes(false);
+          // Wait a little bit extra for the eyes to be fully opened (~2.2s transition)
+          setTimeout(() => {
+            setShowSongSwitcher(true);
+          }, 2400);
         }, 3700);
       }
     };
@@ -113,7 +138,7 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
   }, [musicUrl, slug]);
 
   function ensureAudioContext() {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !idleAudioRef.current) return;
     if (audioCtxRef.current) return;
 
     const ctx = new AudioContext();
@@ -121,8 +146,15 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
     const gain = ctx.createGain();
     source.connect(gain);
     gain.connect(ctx.destination);
+
+    const idleSource = ctx.createMediaElementSource(idleAudioRef.current);
+    const idleGain = ctx.createGain();
+    idleSource.connect(idleGain);
+    idleGain.connect(ctx.destination);
+
     audioCtxRef.current = ctx;
     gainNodeRef.current = gain;
+    idleGainNodeRef.current = idleGain;
   }
 
   function playWithFadeIn() {
@@ -137,18 +169,98 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(1, ctx.currentTime + 1);
     audioRef.current.currentTime = 0;
-    audioRef.current.play().catch(() => {});
+    audioRef.current.play().catch(() => { });
+
+    if (idleGainNodeRef.current && idleAudioRef.current) {
+      idleGainNodeRef.current.gain.cancelScheduledValues(ctx.currentTime);
+      idleGainNodeRef.current.gain.setValueAtTime(0, ctx.currentTime);
+      idleAudioRef.current.pause();
+      idleAudioRef.current.currentTime = 0;
+    }
+  }
+
+  useEffect(() => {
+    if (isCinematicDone && hasStarted && !isStopped) {
+      if (!idleAudioRef.current) return;
+      ensureAudioContext();
+      const ctx = audioCtxRef.current;
+      const gain = idleGainNodeRef.current;
+      if (ctx && gain) {
+        if (ctx.state === "suspended") void ctx.resume();
+        gain.gain.cancelScheduledValues(ctx.currentTime);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 3);
+      }
+      idleAudioRef.current.play().catch(() => { });
+    } else {
+      if (idleAudioRef.current) {
+        idleAudioRef.current.pause();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCinematicDone, hasStarted, isStopped]);
+
+  function handleSwitchTrack(track: "main" | "idle") {
+    if (track === activeTrack) return;
+    ensureAudioContext();
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+
+    if (ctx.state === "suspended") void ctx.resume();
+
+    const mainGain = gainNodeRef.current;
+    const idleGain = idleGainNodeRef.current;
+    const mainAudio = audioRef.current;
+    const idleAudio = idleAudioRef.current;
+
+    if (!mainGain || !idleGain || !mainAudio || !idleAudio) return;
+
+    setActiveTrack(track);
+
+    if (track === "main") {
+      // Fade in main, Fade out idle
+      idleGain.gain.cancelScheduledValues(ctx.currentTime);
+      idleGain.gain.setValueAtTime(idleGain.gain.value, ctx.currentTime);
+      idleGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+
+      mainAudio.play().catch(() => { });
+      mainGain.gain.cancelScheduledValues(ctx.currentTime);
+      mainGain.gain.setValueAtTime(0, ctx.currentTime);
+      mainGain.gain.linearRampToValueAtTime(1, ctx.currentTime + 2);
+
+      setTimeout(() => {
+        idleAudio.pause();
+      }, 2000);
+    } else {
+      // Fade in idle, Fade out main
+      mainGain.gain.cancelScheduledValues(ctx.currentTime);
+      mainGain.gain.setValueAtTime(mainGain.gain.value, ctx.currentTime);
+      mainGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+
+      idleAudio.play().catch(() => { });
+      idleGain.gain.cancelScheduledValues(ctx.currentTime);
+      idleGain.gain.setValueAtTime(0, ctx.currentTime);
+      idleGain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 2);
+
+      setTimeout(() => {
+        mainAudio.pause();
+      }, 2000);
+    }
   }
 
   function handleStart() {
     setHasStarted(true);
     setIsClosingEyes(false);
+    setShowSongSwitcher(false);
+    setActiveTrack("main");
     toggleZoom();
     playWithFadeIn();
   }
 
   function handleStartOver() {
     setIsClosingEyes(false);
+    setShowSongSwitcher(false);
+    setActiveTrack("main");
     restartCinematic();
     playWithFadeIn();
   }
@@ -157,6 +269,7 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
     setIsClosingEyes(false);
     stopCinematic();
     audioRef.current?.pause();
+    idleAudioRef.current?.pause();
   }
 
   if (status === "idle" || status === "loading") {
@@ -218,6 +331,13 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
     >
       <Scene3D />
       <InstructionOverlay />
+
+      <SongSwitcher
+        isVisible={showSongSwitcher}
+        activeTrack={activeTrack}
+        onSwitch={handleSwitchTrack}
+        mainSongName="Our Song"
+      />
 
       <div
         data-testid="eyelid-top"

@@ -11,9 +11,17 @@ interface CinematicState {
   cinematicKey: number;
   /** When true, the camera animation is paused wherever it is */
   isStopped: boolean;
+  /** Whether the user has clicked start to begin the experience */
+  hasStarted: boolean;
+  /** True when the cinematic camera animation has reached the end */
+  isCinematicDone: boolean;
   setPhase: (phase: CameraPhase) => void;
   setBloomIntensity: (v: number) => void;
   setIsInsideHeart: (v: boolean) => void;
+  /** Set the experience as started */
+  setHasStarted: (v: boolean) => void;
+  /** Set whether the cinematic is finished */
+  setCinematicDone: (v: boolean) => void;
   /** Transition from IDLE → ORBIT and start the experience */
   startCinematic: () => void;
   /** Toggle slow cinematic zoom-in / zoom-out */
@@ -33,13 +41,17 @@ export const useCinematicStore = create<CinematicState>((set) => ({
   isZoomedIn: false,
   cinematicKey: 0,
   isStopped: false,
+  hasStarted: false,
+  isCinematicDone: false,
   setPhase: (phase) => set({ phase }),
   setBloomIntensity: (bloomIntensity) => set({ bloomIntensity }),
   setIsInsideHeart: (isInsideHeart) => set({ isInsideHeart }),
-  startCinematic: () => set({ phase: "ORBIT" }),
-  toggleZoom: () => set((s) => ({ isZoomedIn: !s.isZoomedIn })),
+  setHasStarted: (hasStarted) => set({ hasStarted }),
+  setCinematicDone: (isCinematicDone) => set({ isCinematicDone }),
+  startCinematic: () => set({ phase: "ORBIT", hasStarted: true, isCinematicDone: false }),
+  toggleZoom: () => set((s) => ({ isZoomedIn: !s.isZoomedIn, hasStarted: true, isCinematicDone: false })),
   restartCinematic: () =>
-    set((s) => ({ cinematicKey: s.cinematicKey + 1, isZoomedIn: true, isStopped: false })),
+    set((s) => ({ cinematicKey: s.cinematicKey + 1, isZoomedIn: true, isStopped: false, hasStarted: true, isCinematicDone: false })),
   stopCinematic: () => set({ isStopped: true }),
   resetCinematic: () =>
     set((s) => ({
@@ -49,5 +61,7 @@ export const useCinematicStore = create<CinematicState>((set) => ({
       isZoomedIn: false,
       cinematicKey: s.cinematicKey + 1,
       isStopped: false,
+      hasStarted: false,
+      isCinematicDone: false,
     })),
 }));

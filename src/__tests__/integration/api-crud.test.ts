@@ -27,7 +27,7 @@ function createChainMock() {
 
 let chainMock = createChainMock();
 
-const mockFrom = vi.fn(() => chainMock);
+const mockFrom = vi.fn((table: string) => chainMock);
 
 vi.mock("@/lib/supabase-admin", () => ({
     getSupabaseAdmin: () => ({
@@ -133,7 +133,7 @@ describe("GET /api/admin/images", () => {
         const imageChain = createChainMock();
         imageChain.order.mockResolvedValue({ data: [], error: null });
 
-        mockFrom.mockImplementation((table: string) => {
+        mockFrom.mockImplementation((table) => {
             if (table === "clients") return clientChain;
             return imageChain;
         });

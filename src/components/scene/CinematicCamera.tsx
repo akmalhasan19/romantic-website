@@ -12,19 +12,19 @@ const CAM_Z = 8.5;
 const DIST_DEFAULT = Math.sqrt(CAM_X ** 2 + CAM_Y ** 2 + CAM_Z ** 2); // ≈ 9.08
 
 // ── Phase targets ──────────────────────────────────────────────────
-const DIST_ZOOMED    = 3.5;   // up close to the heart
-const DIST_PULLBACK  = 15.0;  // well beyond outer orbit ring (~11)
-const PULLBACK_Y     = 1.2;   // just slightly above orbit plane (orbit ySpread ≤ 0.4)
+const DIST_ZOOMED = 3.5;   // up close to the heart
+const DIST_PULLBACK = 15.0;  // well beyond outer orbit ring (~11)
+const PULLBACK_Y = 1.2;   // just slightly above orbit plane (orbit ySpread ≤ 0.4)
 const PULLBACK_LOOK_Y = -0.4; // subtle downward tilt — barely below horizon
 
 // ── Timing ────────────────────────────────────────────────────────
-const DOLLY_DURATION    = 4.5;  // seconds — cinematic approach
-const ORBIT_DURATION    = 1.4;  // seconds — linger close to the heart
+const DOLLY_DURATION = 4.5;  // seconds — cinematic approach
+const ORBIT_DURATION = 1.4;  // seconds — linger close to the heart
 const PULLBACK_DURATION = 8.0;  // seconds — orbiting retreat
 const FINAL_ORBIT_DURATION = 3.5; // seconds — slow orbit at final distance after pullback
-const ARC_DURATION         = 5.0; // seconds — 145° horizontal sweep with elevation bell curve
-const ARC_SWEEP            = (180 * Math.PI) / 180; // radians — exact horizontal sweep of the arc
-const ORBIT_SPEED       = 0.18; // rad/s — used for dolly-in blend
+const ARC_DURATION = 5.0; // seconds — 145° horizontal sweep with elevation bell curve
+const ARC_SWEEP = (180 * Math.PI) / 180; // radians — exact horizontal sweep of the arc
+const ORBIT_SPEED = 0.18; // rad/s — used for dolly-in blend
 const PULLBACK_ORBIT_SPEED = 0.18; // rad/s during pullback — constant speed, ~65° total sweep
 // Dolly-in orbit blend starts at this progress threshold so the orbit
 // rotation gradually fades in before dolly-in finishes — no freeze between phases.
@@ -55,26 +55,26 @@ type AnimPhase = "idle" | "dolly-in" | "orbit" | "pullback" | "final-orbit" | "a
 
 export function CinematicCamera() {
   const { camera } = useThree();
-  const isZoomedIn   = useCinematicStore((s) => s.isZoomedIn);
+  const isZoomedIn = useCinematicStore((s) => s.isZoomedIn);
   const cinematicKey = useCinematicStore((s) => s.cinematicKey);
-  const isStopped    = useCinematicStore((s) => s.isStopped);
+  const isStopped = useCinematicStore((s) => s.isStopped);
 
   // Internal animation state — all refs to avoid re-renders
-  const phaseRef             = useRef<AnimPhase>("idle");
-  const tRef                 = useRef(0);
-  const startDistRef         = useRef(DIST_DEFAULT);
-  const orbitTimeRef         = useRef(0);
-  const pullbackAzimuthRef   = useRef(0);
-  const arcStartAzimuthRef   = useRef(0);
-  const pullbackStartDistRef  = useRef(DIST_ZOOMED);
-  const pullbackStartYRef     = useRef(0);
+  const phaseRef = useRef<AnimPhase>("idle");
+  const tRef = useRef(0);
+  const startDistRef = useRef(DIST_DEFAULT);
+  const orbitTimeRef = useRef(0);
+  const pullbackAzimuthRef = useRef(0);
+  const arcStartAzimuthRef = useRef(0);
+  const pullbackStartDistRef = useRef(DIST_ZOOMED);
+  const pullbackStartYRef = useRef(0);
 
-  const isZoomedInRef  = useRef(isZoomedIn);
-  const isStoppedRef   = useRef(isStopped);
-  const prevZoomedRef  = useRef(false);
+  const isZoomedInRef = useRef(isZoomedIn);
+  const isStoppedRef = useRef(isStopped);
+  const prevZoomedRef = useRef(false);
 
   useEffect(() => { isZoomedInRef.current = isZoomedIn; }, [isZoomedIn]);
-  useEffect(() => { isStoppedRef.current  = isStopped;  }, [isStopped]);
+  useEffect(() => { isStoppedRef.current = isStopped; }, [isStopped]);
 
   // Initial camera placement
   useEffect(() => {
@@ -84,16 +84,25 @@ export function CinematicCamera() {
     (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
   }, [camera]);
 
-  // "Start Over": teleport to start, reset all state → begin dolly-in immediately
+  // "Start Over" or "Reset": teleport to start
   useEffect(() => {
     if (cinematicKey === 0) return;
     camera.position.set(CAM_X, CAM_Y, CAM_Z);
     camera.lookAt(0, 0, 0);
-    startDistRef.current     = DIST_DEFAULT;
-    tRef.current             = 0;
-    orbitTimeRef.current     = 0;
-    prevZoomedRef.current    = true;  // already zoomed-in after restartCinematic
-    phaseRef.current         = "dolly-in";
+    startDistRef.current = DIST_DEFAULT;
+    tRef.current = 0;
+    orbitTimeRef.current = 0;
+
+    // If the store hasn't started (e.g., from resetCinematic), just stay idle
+    if (!useCinematicStore.getState().hasStarted) {
+      prevZoomedRef.current = false;
+      phaseRef.current = "idle";
+      return;
+    }
+
+    // Otherwise it's a restart, begin dolly-in immediately
+    prevZoomedRef.current = true;
+    phaseRef.current = "dolly-in";
   }, [cinematicKey, camera]);
 
   // Priority 1 → runs after OrbitControls (priority 0)
@@ -102,16 +111,16 @@ export function CinematicCamera() {
 
     // First "Start" press: idle → dolly-in
     if (isZoomedInRef.current && !prevZoomedRef.current && phaseRef.current === "idle") {
-      startDistRef.current  = camera.position.length();
-      tRef.current          = 0;
-      phaseRef.current      = "dolly-in";
+      startDistRef.current = camera.position.length();
+      tRef.current = 0;
+      phaseRef.current = "dolly-in";
       prevZoomedRef.current = true;
     }
 
     // ── Phase: dolly-in ──────────────────────────────────────────────
     if (phaseRef.current === "dolly-in") {
       tRef.current = Math.min(1, tRef.current + delta / DOLLY_DURATION);
-      const eased   = easeInOutCubic(tRef.current);
+      const eased = easeInOutCubic(tRef.current);
       const newDist = THREE.MathUtils.lerp(startDistRef.current, DIST_ZOOMED, eased);
       camera.position.normalize().multiplyScalar(newDist);
 
@@ -134,8 +143,8 @@ export function CinematicCamera() {
         // Dolly-in done → enter close orbit phase (animation 2).
         // Azimuth captured here so the orbit starts seamlessly from this exact position.
         orbitTimeRef.current = 0;
-        tRef.current         = 0;
-        phaseRef.current     = "orbit";
+        tRef.current = 0;
+        phaseRef.current = "orbit";
       }
       return;
     }
@@ -147,8 +156,8 @@ export function CinematicCamera() {
       orbitTimeRef.current += delta;
       // Same rotation matrix as pullback's leftward sweep
       const angle = ORBIT_SPEED * delta;
-      const cos   = Math.cos(angle);
-      const sin   = Math.sin(angle);
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
       const x = camera.position.x;
       const z = camera.position.z;
       camera.position.x = x * cos - z * sin;
@@ -157,10 +166,10 @@ export function CinematicCamera() {
 
       if (orbitTimeRef.current >= ORBIT_DURATION) {
         // Capture XZ horizontal distance so pullback starts at exactly this position.
-        pullbackAzimuthRef.current   = Math.atan2(camera.position.x, camera.position.z);
+        pullbackAzimuthRef.current = Math.atan2(camera.position.x, camera.position.z);
         pullbackStartDistRef.current = Math.sqrt(camera.position.x ** 2 + camera.position.z ** 2);
-        pullbackStartYRef.current    = camera.position.y;
-        tRef.current     = 0;
+        pullbackStartYRef.current = camera.position.y;
+        tRef.current = 0;
         phaseRef.current = "pullback";
       }
       return;
@@ -178,7 +187,7 @@ export function CinematicCamera() {
 
       // Radial distance and height both ease out
       const dist = THREE.MathUtils.lerp(pullbackStartDistRef.current, DIST_PULLBACK, eased);
-      const y    = THREE.MathUtils.lerp(pullbackStartYRef.current,    PULLBACK_Y,    eased);
+      const y = THREE.MathUtils.lerp(pullbackStartYRef.current, PULLBACK_Y, eased);
 
       const az = pullbackAzimuthRef.current;
       camera.position.set(
@@ -213,7 +222,7 @@ export function CinematicCamera() {
       if (orbitTimeRef.current >= FINAL_ORBIT_DURATION) {
         // Capture the exact azimuth so arc can sweep precisely 180° from here
         arcStartAzimuthRef.current = pullbackAzimuthRef.current;
-        tRef.current     = 0;
+        tRef.current = 0;
         phaseRef.current = "arc";
       }
     }
@@ -227,14 +236,14 @@ export function CinematicCamera() {
     // to (0,0,0) using the same soft elevation easing — full continuity.
     if (phaseRef.current === "arc") {
       tRef.current = Math.min(1, tRef.current + delta / ARC_DURATION);
-      const easedAz   = easeArcOut(tRef.current);       // matches final-orbit azimuth speed
+      const easedAz = easeArcOut(tRef.current);       // matches final-orbit azimuth speed
       const easedElev = easeInOutCubic(tRef.current);   // soft-start for elevation & lookAt
 
       // Azimuth sweeps exactly ARC_SWEEP radians leftward from the captured start
       const az = arcStartAzimuthRef.current - ARC_SWEEP * easedAz;
       pullbackAzimuthRef.current = az; // keep in sync for any future use
 
-      const arcR     = Math.sqrt(DIST_PULLBACK ** 2 + PULLBACK_Y ** 2); // true sphere radius
+      const arcR = Math.sqrt(DIST_PULLBACK ** 2 + PULLBACK_Y ** 2); // true sphere radius
       const elevBase = Math.atan2(PULLBACK_Y, DIST_PULLBACK); // ≈ 4.6°
       const ARC_ELEV_END = 0.30; // ~17° additional elevation above base
       // Elevation rises softly (v=0 at start) so it doesn't feel like an immediate heave
@@ -253,6 +262,7 @@ export function CinematicCamera() {
 
       if (tRef.current >= 1) {
         phaseRef.current = "done";
+        useCinematicStore.getState().setCinematicDone(true);
       }
     }
   }, 1);

@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { useGalleryStore } from "@/store/gallery-store";
+import { useCinematicStore } from "@/store/cinematic-store";
 
 const FRAME_W = 0.5;
 const FRAME_H = 0.67;
@@ -93,10 +94,10 @@ function OuterRingParticles() {
 
   const positions = useMemo(() => {
     const zones: [number, number, number, number, number][] = [
-      [7.5,  9.5,  2200, 0.20, 1.0],
-      [9.5,  11.5, 1800, 0.32, 1.0],
+      [7.5, 9.5, 2200, 0.20, 1.0],
+      [9.5, 11.5, 1800, 0.32, 1.0],
       [11.5, 13.0, 1200, 0.45, 1.0],
-      [13.0, 15.0,  700, 0.60, 1.0],
+      [13.0, 15.0, 700, 0.60, 1.0],
     ];
 
     const totalCount = zones.reduce((s, z) => s + z[2], 0);
@@ -178,7 +179,7 @@ function InstancedPhotoFrames({
       for (let i = 0; i < m.count; i++) m.setMatrixAt(i, hidden);
       m.instanceMatrix.needsUpdate = true;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useFrame((state) => {
