@@ -198,6 +198,24 @@ export default function Home() {
             >
               miringin hpmu dulu, cantik
             </p>
+            <p
+              style={{
+                color: "#f0c8a0",
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                fontSize: "clamp(0.85rem, 3.5vw, 1.1rem)",
+                fontStyle: "italic",
+                letterSpacing: "0.06em",
+                textAlign: "center",
+                textShadow: "0 0 24px rgba(232,168,124,0.55), 0 2px 8px rgba(0,0,0,0.8)",
+                userSelect: "none",
+                pointerEvents: "none",
+                margin: 0,
+                marginTop: "0.5rem",
+                opacity: 0.85,
+              }}
+            >
+              jangan lupa gedein suaranya 🔊
+            </p>
           </>
         ) : (
           <p
