@@ -94,7 +94,9 @@ describe("GET /api/admin/images", () => {
         // Make the chain resolve with data
         chainMock.order.mockResolvedValue({ data: mockImages, error: null });
 
-        const res = await getImages();
+        const res = await getImages(
+            new Request("http://localhost:3000/api/admin/images")
+        );
         const data = await res.json();
 
         expect(res.status).toBe(200);
@@ -108,11 +110,46 @@ describe("GET /api/admin/images", () => {
             error: { message: "DB error" },
         });
 
-        const res = await getImages();
+        const res = await getImages(
+            new Request("http://localhost:3000/api/admin/images")
+        );
         const data = await res.json();
 
         expect(res.status).toBe(500);
         expect(data.error).toBe("Failed to fetch images");
+    });
+
+    it("filters images by slug when provided", async () => {
+        const clientChain = createChainMock();
+        clientChain.single.mockResolvedValue({
+            data: {
+                id: "550e8400-e29b-41d4-a716-446655440000",
+                slug: "pasangan-demo",
+                name: "Pasangan Demo",
+            },
+            error: null,
+        });
+
+        const imageChain = createChainMock();
+        imageChain.order.mockResolvedValue({ data: [], error: null });
+
+        mockFrom.mockImplementation((table: string) => {
+            if (table === "clients") return clientChain;
+            return imageChain;
+        });
+
+        const res = await getImages(
+            new Request("http://localhost:3000/api/admin/images?slug=pasangan-demo")
+        );
+        const data = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(data.images).toEqual([]);
+        expect(clientChain.eq).toHaveBeenCalledWith("slug", "pasangan-demo");
+        expect(imageChain.eq).toHaveBeenCalledWith(
+            "client_id",
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
     });
 });
 
@@ -125,6 +162,7 @@ describe("POST /api/admin/images", () => {
     it("creates an image with valid payload and returns 201", async () => {
         const newImage = {
             id: "uuid-123",
+            client_id: "550e8400-e29b-41d4-a716-446655440000",
             url: "https://example.com/new.jpg",
             public_id: "folder/new",
             width: null,
@@ -135,6 +173,7 @@ describe("POST /api/admin/images", () => {
         chainMock.single.mockResolvedValue({ data: newImage, error: null });
 
         const req = makeRequest("/api/admin/images", "POST", {
+            client_id: "550e8400-e29b-41d4-a716-446655440000",
             url: "https://example.com/new.jpg",
             public_id: "folder/new",
         });
@@ -144,6 +183,13 @@ describe("POST /api/admin/images", () => {
 
         expect(res.status).toBe(201);
         expect(data.image).toEqual(newImage);
+        expect(chainMock.insert).toHaveBeenCalledWith({
+            client_id: "550e8400-e29b-41d4-a716-446655440000",
+            url: "https://example.com/new.jpg",
+            public_id: "folder/new",
+            width: null,
+            height: null,
+        });
     });
 
     it("returns 400 for invalid URL", async () => {
@@ -180,6 +226,7 @@ describe("POST /api/admin/images", () => {
         });
 
         const req = makeRequest("/api/admin/images", "POST", {
+            client_id: "550e8400-e29b-41d4-a716-446655440000",
             url: "https://example.com/dup.jpg",
             public_id: "folder/existing",
         });
@@ -273,7 +320,7 @@ describe("GET /api/admin/settings", () => {
             id: 1,
             sphere_color: "#e8a87c",
             floating_text: "Only For U",
-            target_name: "My Love",
+            target_name: "Pendek.",
             particle_count: 50,
             updated_at: "2024-01-01",
         };

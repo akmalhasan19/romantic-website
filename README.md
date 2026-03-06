@@ -6,6 +6,7 @@ Pengunjung bisa menikmati scene partikel dan orbit foto, sementara admin bisa me
 ## Fitur Utama
 
 - Landing page 3D interaktif menggunakan `react-three-fiber` + `three.js`
+- Public route berbasis slug: `/<slug>` untuk memuat pasangan, foto, dan konfigurasi yang berbeda
 - Efek partikel orbit, floating text, kamera sinematik, dan post-processing
 - Galeri foto yang diambil dari database Supabase
 - Admin panel untuk:
@@ -20,7 +21,7 @@ Pengunjung bisa menikmati scene partikel dan orbit foto, sementara admin bisa me
 - Frontend: `Next.js 16`, `React 19`, `Tailwind CSS 4`
 - 3D: `@react-three/fiber`, `@react-three/drei`, `three`, `@react-three/postprocessing`
 - Backend/API: Next.js Route Handlers
-- Database: `Supabase` (PostgreSQL + RLS)
+- Database: `Supabase` (PostgreSQL + RLS, ready for multi-tenant clients)
 - Media storage: `Cloudinary`
 - State management: `Zustand`
 - Validation: `Zod`
@@ -40,7 +41,7 @@ src/
   __tests__/              # Unit + integration tests
 supabase/
   schema.sql              # DB schema + RLS policies
-  seed.sql                # Initial seed data
+  seed.sql                # Initial multi-tenant seed data
 scripts/
   generate-qr.mjs         # Generator QR code image
 ```
@@ -107,7 +108,10 @@ Buka `http://localhost:3000`.
 ## API Ringkas
 
 Public:
+- `GET /api/clients`
+- `GET /api/clients?slug=<slug>`
 - `GET /api/public/gallery`
+- `GET /api/public/gallery?slug=<slug>`
 
 Admin Auth:
 - `POST /api/admin/login`
@@ -116,6 +120,8 @@ Admin Auth:
 
 Admin Content:
 - `GET /api/admin/images`
+- `GET /api/admin/images?slug=<slug>`
+- `GET /api/admin/images?client_id=<uuid>`
 - `POST /api/admin/images`
 - `DELETE /api/admin/images/[id]`
 - `GET /api/admin/settings`
@@ -139,7 +145,13 @@ Rekomendasi deploy di Vercel:
 4. Deploy
 5. Verifikasi endpoint `/` dan `/admin`
 
+Catatan public route:
+
+- `/` akan redirect ke `/default`
+- QR code multi-tenant sebaiknya diarahkan ke `/<slug>`
+
 ## Catatan
 
-- `seed.sql` menggunakan `ON CONFLICT DO UPDATE` untuk `site_settings`, jadi menjalankan seed ulang akan memperbarui default settings.
+- `seed.sql` menggunakan `ON CONFLICT DO UPDATE` untuk `clients` dan `site_settings`, jadi menjalankan seed ulang akan memperbarui konfigurasi default.
+- `gallery_images` sekarang terkait ke `clients` melalui `client_id`, dan public RLS membaca header `x-client-slug` dengan fallback ke slug `default` selama migrasi dynamic route belum selesai.
 - Jika perubahan visual belum terlihat, lakukan hard refresh browser (`Ctrl+F5`).

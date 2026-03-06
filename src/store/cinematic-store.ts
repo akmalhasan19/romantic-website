@@ -22,6 +22,8 @@ interface CinematicState {
   restartCinematic: () => void;
   /** Freeze animation in place */
   stopCinematic: () => void;
+  /** Reset cinematic state when entering a different client route */
+  resetCinematic: () => void;
 }
 
 export const useCinematicStore = create<CinematicState>((set) => ({
@@ -39,4 +41,13 @@ export const useCinematicStore = create<CinematicState>((set) => ({
   restartCinematic: () =>
     set((s) => ({ cinematicKey: s.cinematicKey + 1, isZoomedIn: true, isStopped: false })),
   stopCinematic: () => set({ isStopped: true }),
+  resetCinematic: () =>
+    set((s) => ({
+      phase: "IDLE",
+      bloomIntensity: 0.2,
+      isInsideHeart: false,
+      isZoomedIn: false,
+      cinematicKey: s.cinematicKey + 1,
+      isStopped: false,
+    })),
 }));

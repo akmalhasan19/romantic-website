@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { loginSchema, imagePayloadSchema, settingsSchema } from "@/lib/validators";
+import {
+    clientSlugSchema,
+    imagePayloadSchema,
+    loginSchema,
+    settingsSchema,
+} from "@/lib/validators";
 
 // ═══════════════════════════════════════════════════════════════════
 // loginSchema
@@ -71,6 +76,7 @@ describe("imagePayloadSchema", () => {
 
     it("accepts valid payload with optional width and height", () => {
         const result = imagePayloadSchema.safeParse({
+            client_id: "550e8400-e29b-41d4-a716-446655440000",
             url: "https://example.com/photo.png",
             public_id: "folder/photo",
             width: 1920,
@@ -81,6 +87,15 @@ describe("imagePayloadSchema", () => {
             expect(result.data.width).toBe(1920);
             expect(result.data.height).toBe(1080);
         }
+    });
+
+    it("rejects invalid client_id format", () => {
+        const result = imagePayloadSchema.safeParse({
+            client_id: "not-a-uuid",
+            url: "https://example.com/photo.png",
+            public_id: "folder/photo",
+        });
+        expect(result.success).toBe(false);
     });
 
     it("rejects invalid URL format", () => {
@@ -124,6 +139,20 @@ describe("imagePayloadSchema", () => {
             width: 0,
         });
         expect(result.success).toBe(false);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// clientSlugSchema
+// ═══════════════════════════════════════════════════════════════════
+
+describe("clientSlugSchema", () => {
+    it("accepts lowercase kebab-case slugs", () => {
+        expect(clientSlugSchema.safeParse("pasangan-demo").success).toBe(true);
+    });
+
+    it("rejects uppercase or spaced slugs", () => {
+        expect(clientSlugSchema.safeParse("Pasangan Demo").success).toBe(false);
     });
 });
 

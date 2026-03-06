@@ -1,5 +1,8 @@
 import { getSupabase } from "@/lib/supabase";
-import type { GalleryImageRow, SiteSettingsRow } from "@/lib/types";
+import { clientSlugSchema } from "@/lib/validators";
+import type { ClientRow, GalleryImageRow, SiteSettingsRow } from "@/lib/types";
+
+const DEFAULT_CLIENT_SLUG = "default";
 
 function normalizeLegacySettings(
   settings: Partial<SiteSettingsRow>
@@ -13,16 +16,47 @@ function normalizeLegacySettings(
   return settings;
 }
 
-export async function GET() {
-  const supabase = getSupabase();
+function toSettingsFromClient(client: ClientRow): Partial<SiteSettingsRow> {
+  return normalizeLegacySettings({
+    sphere_color: client.sphere_color,
+    floating_text: client.floating_text,
+    target_name: client.target_name,
+    particle_count: client.particle_count,
+  });
+}
 
-  const [imagesRes, settingsRes] = await Promise.all([
-    supabase
-      .from("gallery_images")
-      .select("id, url, public_id, width, height, created_at")
-      .order("created_at", { ascending: false }),
-    supabase.from("site_settings").select("*").eq("id", 1).single(),
-  ]);
+export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const slugParam = requestUrl.searchParams.get("slug") ?? DEFAULT_CLIENT_SLUG;
+  const parsedSlug = clientSlugSchema.safeParse(slugParam);
+
+  if (!parsedSlug.success) {
+    return Response.json({ error: "Invalid client slug" }, { status: 400 });
+  }
+
+  const slug = parsedSlug.data;
+  const supabase = getSupabase({ headers: { "x-client-slug": slug } });
+
+  const { data: client, error: clientError } = await supabase
+    .from("clients")
+    .select(
+      "id, slug, name, sphere_color, floating_text, target_name, particle_count, music_url, created_at, updated_at"
+    )
+    .eq("slug", slug)
+    .single();
+
+  if (clientError || !client) {
+    return Response.json(
+      { error: "Client not found" },
+      { status: 404 }
+    );
+  }
+
+  const imagesRes = await supabase
+    .from("gallery_images")
+    .select("id, client_id, url, public_id, width, height, created_at")
+    .eq("client_id", client.id)
+    .order("created_at", { ascending: false });
 
   if (imagesRes.error) {
     return Response.json(
@@ -32,9 +66,7 @@ export async function GET() {
   }
 
   const images: GalleryImageRow[] = imagesRes.data ?? [];
-  const settings: Partial<SiteSettingsRow> = normalizeLegacySettings(
-    settingsRes.data ?? {}
-  );
+  const settings: Partial<SiteSettingsRow> = toSettingsFromClient(client);
 
-  return Response.json({ images, settings });
+  return Response.json({ client, images, settings });
 }

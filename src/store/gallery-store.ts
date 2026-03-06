@@ -5,11 +5,19 @@ import type { ImagePayload, SettingsPayload } from "@/lib/validators";
 
 export interface GalleryImage {
   id: string;
+  client_id?: string | null;
   url: string;
   public_id: string;
   width: number | null;
   height: number | null;
   created_at: string;
+}
+
+export interface GalleryClient {
+  id: string;
+  slug: string;
+  name: string;
+  music_url: string | null;
 }
 
 export interface SiteSettings {
@@ -23,6 +31,7 @@ type Status = "idle" | "loading" | "ready" | "error";
 
 interface GalleryState {
   // ── State ──────────────────────────────────────────────────────────
+  client: GalleryClient | null;
   images: GalleryImage[];
   settings: SiteSettings;
   status: Status;
@@ -32,7 +41,7 @@ interface GalleryState {
   scatterMix: number;
 
   // ── Actions — public ───────────────────────────────────────────────
-  fetchPublicData: () => Promise<void>;
+  fetchPublicData: (slug: string) => Promise<void>;
   triggerScatter: () => void;
 
   // ── Actions — admin ────────────────────────────────────────────────
@@ -52,10 +61,25 @@ const DEFAULT_SETTINGS: SiteSettings = {
   particle_count: 50,
 };
 
+const INVALID_SLUG_MESSAGE = "Halaman Tidak Ditemukan / QR Tidak Valid";
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Unknown error";
+}
+
+function toPublicErrorMessage(err: unknown): string {
+  const message = toErrorMessage(err);
+  if (message === "Client not found" || message === "Invalid client slug") {
+    return INVALID_SLUG_MESSAGE;
+  }
+  return message;
+}
+
+function buildPublicGalleryUrl(slug: string): string {
+  const query = new URLSearchParams({ slug });
+  return `/api/public/gallery?${query.toString()}`;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -75,6 +99,7 @@ let scatterTimer: ReturnType<typeof setTimeout> | null = null;
 // ── Store ───────────────────────────────────────────────────────────
 
 export const useGalleryStore = create<GalleryState>((set, get) => ({
+  client: null,
   images: [],
   settings: DEFAULT_SETTINGS,
   status: "idle",
@@ -83,21 +108,29 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
   // ── Public actions ─────────────────────────────────────────────────
 
-  fetchPublicData: async () => {
-    set({ status: "loading", error: null });
+  fetchPublicData: async (slug) => {
+    set({ status: "loading", error: null, client: null, images: [] });
     try {
       const data = await fetchJson<{
+        client: GalleryClient;
         images: GalleryImage[];
         settings: SiteSettings | null;
-      }>("/api/public/gallery");
+      }>(buildPublicGalleryUrl(slug));
 
       set({
+        client: data.client ?? null,
         images: data.images ?? [],
         settings: data.settings ?? DEFAULT_SETTINGS,
         status: "ready",
       });
     } catch (err) {
-      set({ status: "error", error: toErrorMessage(err) });
+      set({
+        client: null,
+        images: [],
+        settings: DEFAULT_SETTINGS,
+        status: "error",
+        error: toPublicErrorMessage(err),
+      });
     }
   },
 

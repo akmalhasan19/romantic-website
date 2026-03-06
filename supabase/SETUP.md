@@ -9,7 +9,14 @@
    - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY`
 3. Open the **SQL Editor** in the Supabase dashboard
 4. Paste and run `supabase/schema.sql` to create tables + RLS policies
-5. Paste and run `supabase/seed.sql` to insert default settings + sample data
+5. Paste and run `supabase/seed.sql` to insert multi-tenant clients, legacy fallback settings, and sample data
+
+### Multi-tenant notes
+
+- New table `clients` stores per-couple configuration such as slug, visual theme, particle density, and music URL.
+- Table `gallery_images` now includes `client_id` as a foreign key to `clients`.
+- Public RLS for `gallery_images` reads the `x-client-slug` request header. Until the app routes are updated, queries without that header fall back to the seeded `default` client.
+- Table `site_settings` is still kept as a temporary compatibility layer for the current single-tenant routes/admin settings flow.
 
 ## Cloudinary Setup
 

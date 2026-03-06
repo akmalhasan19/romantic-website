@@ -1,12 +1,73 @@
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import { imagePayloadSchema } from "@/lib/validators";
+import { clientIdSchema, clientSlugSchema, imagePayloadSchema } from "@/lib/validators";
+
+const DEFAULT_CLIENT_SLUG = "default";
+
+async function resolveClientIdFromSlug(slug: string) {
+  const { data, error } = await getSupabaseAdmin()
+    .from("clients")
+    .select("id, slug, name")
+    .eq("slug", slug)
+    .single();
+
+  if (error || !data) {
+    return { error: "Client not found" as const, client: null };
+  }
+
+  return { error: null, client: data };
+}
+
+async function resolveTargetClientId(clientId?: string) {
+  if (clientId) {
+    return { error: null, clientId };
+  }
+
+  const defaultClient = await resolveClientIdFromSlug(DEFAULT_CLIENT_SLUG);
+  if (defaultClient.error || !defaultClient.client) {
+    return {
+      error: "Default client is not configured. Run supabase/seed.sql first.",
+      clientId: null,
+    };
+  }
+
+  return { error: null, clientId: defaultClient.client.id };
+}
 
 /** GET /api/admin/images — list all gallery images (admin view) */
-export async function GET() {
-  const { data, error } = await getSupabaseAdmin()
-    .from("gallery_images")
-    .select("*")
-    .order("created_at", { ascending: false });
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const slugParam = url.searchParams.get("slug");
+  const clientIdParam = url.searchParams.get("client_id");
+
+  let clientId: string | null = null;
+
+  if (slugParam) {
+    const parsedSlug = clientSlugSchema.safeParse(slugParam);
+    if (!parsedSlug.success) {
+      return Response.json({ error: "Invalid client slug" }, { status: 400 });
+    }
+
+    const clientResult = await resolveClientIdFromSlug(parsedSlug.data);
+    if (clientResult.error || !clientResult.client) {
+      return Response.json({ error: "Client not found" }, { status: 404 });
+    }
+
+    clientId = clientResult.client.id;
+  } else if (clientIdParam) {
+    const parsedClientId = clientIdSchema.safeParse(clientIdParam);
+    if (!parsedClientId.success) {
+      return Response.json({ error: "Invalid client ID" }, { status: 400 });
+    }
+    clientId = parsedClientId.data;
+  }
+
+  let query = getSupabaseAdmin().from("gallery_images").select("*");
+
+  if (clientId) {
+    query = query.eq("client_id", clientId);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false });
 
   if (error) {
     return Response.json(
@@ -35,11 +96,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const { url, public_id, width, height } = parsed.data;
+  const { client_id, url, public_id, width, height } = parsed.data;
+
+  const targetClient = await resolveTargetClientId(client_id);
+  if (targetClient.error || !targetClient.clientId) {
+    return Response.json({ error: targetClient.error }, { status: 500 });
+  }
 
   const { data, error } = await getSupabaseAdmin()
     .from("gallery_images")
-    .insert({ url, public_id, width: width ?? null, height: height ?? null })
+    .insert({
+      client_id: targetClient.clientId,
+      url,
+      public_id,
+      width: width ?? null,
+      height: height ?? null,
+    })
     .select()
     .single();
 
@@ -47,7 +119,7 @@ export async function POST(request: Request) {
     // Handle unique constraint violation on public_id
     if (error.code === "23505") {
       return Response.json(
-        { error: "Image with this public_id already exists" },
+        { error: "Image with this public_id already exists for this client" },
         { status: 409 }
       );
     }
