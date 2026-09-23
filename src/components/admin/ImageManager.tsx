@@ -379,7 +379,7 @@ export function ImageManager() {
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/80">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   onClick={handleCloseEdit}
                   disabled={savingCaption}
                 >
