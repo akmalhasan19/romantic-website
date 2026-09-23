@@ -20,6 +20,13 @@ export interface GalleryImage {
   created_at: string;
 }
 
+export interface MemoryModalOrigin {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface GalleryClient {
   id: string;
   slug: string;
@@ -58,12 +65,14 @@ interface GalleryState {
 
   // Interactive Memory Modal
   activeMemoryIndex: number | null;
+  memoryOriginRect: MemoryModalOrigin | null;
 
   // ── Actions — public ───────────────────────────────────────────────
   fetchPublicData: (slug: string) => Promise<void>;
   triggerScatter: () => void;
-  openMemoryModal: (index: number) => void;
+  openMemoryModal: (index: number, originRect?: MemoryModalOrigin | null) => void;
   closeMemoryModal: () => void;
+  setMemoryOriginRect: (originRect: MemoryModalOrigin | null) => void;
   nextMemory: () => void;
   prevMemory: () => void;
 
@@ -180,6 +189,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   error: null,
   scatterMix: 0,
   activeMemoryIndex: null,
+  memoryOriginRect: null,
 
   // ── Public actions ─────────────────────────────────────────────────
 
@@ -194,6 +204,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       settings: DEFAULT_SETTINGS,
       scatterMix: 0,
       activeMemoryIndex: null,
+      memoryOriginRect: null,
     });
 
     try {
@@ -218,6 +229,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         status: "ready",
         error: null,
         activeMemoryIndex: null,
+        memoryOriginRect: null,
       });
     } catch (err) {
       if (requestId !== latestPublicRequestId) {
@@ -231,6 +243,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         status: "error",
         error: toPublicErrorMessage(err),
         activeMemoryIndex: null,
+        memoryOriginRect: null,
       });
     }
   },
@@ -246,15 +259,19 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     }, 2000);
   },
 
-  openMemoryModal: (index: number) => {
+  openMemoryModal: (index: number, originRect?: MemoryModalOrigin | null) => {
     const images = get().images;
     if (index >= 0 && index < images.length) {
-      set({ activeMemoryIndex: index });
+      set({ activeMemoryIndex: index, memoryOriginRect: originRect ?? null });
     }
   },
 
   closeMemoryModal: () => {
-    set({ activeMemoryIndex: null });
+    set({ activeMemoryIndex: null, memoryOriginRect: null });
+  },
+
+  setMemoryOriginRect: (originRect: MemoryModalOrigin | null) => {
+    set({ memoryOriginRect: originRect });
   },
 
   nextMemory: () => {

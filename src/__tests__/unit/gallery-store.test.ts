@@ -164,4 +164,49 @@ describe("gallery-store public route state", () => {
     expect(state.scatterMix).toBe(0);
     expect(state.settings).toEqual(DEFAULT_SETTINGS);
   });
+
+  it("handles openMemoryModal with originRect and closeMemoryModal", () => {
+    useGalleryStore.setState({
+      images: [
+        {
+          id: "img-1",
+          url: "https://example.com/1.jpg",
+          public_id: "1",
+          width: 800,
+          height: 600,
+          created_at: "2024-01-01",
+        },
+        {
+          id: "img-2",
+          url: "https://example.com/2.jpg",
+          public_id: "2",
+          width: 800,
+          height: 600,
+          created_at: "2024-01-02",
+        },
+      ],
+      activeMemoryIndex: null,
+      memoryOriginRect: null,
+    });
+
+    const origin = { x: 320, y: 240, width: 64, height: 86 };
+    useGalleryStore.getState().openMemoryModal(1, origin);
+
+    let state = useGalleryStore.getState();
+    expect(state.activeMemoryIndex).toBe(1);
+    expect(state.memoryOriginRect).toEqual(origin);
+
+    useGalleryStore.getState().nextMemory();
+    state = useGalleryStore.getState();
+    expect(state.activeMemoryIndex).toBe(0);
+
+    useGalleryStore.getState().prevMemory();
+    state = useGalleryStore.getState();
+    expect(state.activeMemoryIndex).toBe(1);
+
+    useGalleryStore.getState().closeMemoryModal();
+    state = useGalleryStore.getState();
+    expect(state.activeMemoryIndex).toBeNull();
+    expect(state.memoryOriginRect).toBeNull();
+  });
 });

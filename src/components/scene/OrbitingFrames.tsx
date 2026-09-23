@@ -4,13 +4,50 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
-import { useGalleryStore } from "@/store/gallery-store";
+import { useGalleryStore, type MemoryModalOrigin } from "@/store/gallery-store";
 import { useCinematicStore } from "@/store/cinematic-store";
 
 const FRAME_W = 0.5;
 const FRAME_H = 0.67;
 const INSET = 0.04;
 const DISK_ROTATE_SPEED = 0.04; // rad/s ≈ 2.3°/s, rightward rotation
+
+function computeScreenOriginFromEvent(e: {
+  point: THREE.Vector3;
+  camera: THREE.Camera;
+  clientX?: number;
+  clientY?: number;
+}): MemoryModalOrigin {
+  try {
+    const v = e.point.clone().project(e.camera);
+    const screenX = (v.x * 0.5 + 0.5) * window.innerWidth;
+    const screenY = (-(v.y * 0.5) + 0.5) * window.innerHeight;
+
+    // Projected frame dimensions
+    const right = new THREE.Vector3(FRAME_W / 2, 0, 0).applyQuaternion(e.camera.quaternion);
+    const top = new THREE.Vector3(0, FRAME_H / 2, 0).applyQuaternion(e.camera.quaternion);
+    const corner = e.point.clone().add(right).add(top).project(e.camera);
+    const cornerX = (corner.x * 0.5 + 0.5) * window.innerWidth;
+    const cornerY = (-(corner.y * 0.5) + 0.5) * window.innerHeight;
+
+    const width = Math.max(36, Math.abs(cornerX - screenX) * 2);
+    const height = Math.max(48, Math.abs(cornerY - screenY) * 2);
+
+    return {
+      x: Math.round(screenX),
+      y: Math.round(screenY),
+      width: Math.round(width),
+      height: Math.round(height),
+    };
+  } catch {
+    return {
+      x: e.clientX ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 500),
+      y: e.clientY ?? (typeof window !== "undefined" ? window.innerHeight / 2 : 400),
+      width: 50,
+      height: 67,
+    };
+  }
+}
 
 /* ─── Shared glow sprite ─────────────────────────────────────────── */
 
@@ -240,7 +277,8 @@ function InstancedPhotoFrames({
         onClick={(e) => {
           e.stopPropagation();
           if (e.instanceId !== undefined && texLen > 0) {
-            openMemoryModal(e.instanceId % texLen);
+            const origin = computeScreenOriginFromEvent(e);
+            openMemoryModal(e.instanceId % texLen, origin);
           }
         }}
         onPointerOver={(e) => {
@@ -265,7 +303,8 @@ function InstancedPhotoFrames({
           frustumCulled={false}
           onClick={(e) => {
             e.stopPropagation();
-            openMemoryModal(tIdx);
+            const origin = computeScreenOriginFromEvent(e);
+            openMemoryModal(tIdx, origin);
           }}
           onPointerOver={(e) => {
             e.stopPropagation();
