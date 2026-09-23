@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     return Response.json({ error: targetClient.error }, { status: 500 });
   }
 
-  const { data, error } = await getSupabaseAdmin()
+  let insertResult = await getSupabaseAdmin()
     .from("gallery_images")
     .insert({
       client_id: targetClient.clientId,
@@ -117,6 +117,34 @@ export async function POST(request: Request) {
     .select()
     .single();
 
+  if (insertResult.error && insertResult.error.code !== "23505") {
+    // Retry without caption and memory_date if columns do not exist yet in Supabase
+    const fallbackResult = await getSupabaseAdmin()
+      .from("gallery_images")
+      .insert({
+        client_id: targetClient.clientId,
+        url,
+        public_id,
+        width: width ?? null,
+        height: height ?? null,
+      })
+      .select()
+      .single();
+
+    if (!fallbackResult.error && fallbackResult.data) {
+      insertResult = {
+        ...fallbackResult,
+        data: {
+          ...fallbackResult.data,
+          caption: null,
+          memory_date: null,
+        },
+      };
+    }
+  }
+
+  const { data, error } = insertResult;
+
   if (error) {
     // Handle unique constraint violation on public_id
     if (error.code === "23505") {
@@ -126,7 +154,7 @@ export async function POST(request: Request) {
       );
     }
     return Response.json(
-      { error: "Failed to save image" },
+      { error: "Failed to save image", details: error.message },
       { status: 500 }
     );
   }

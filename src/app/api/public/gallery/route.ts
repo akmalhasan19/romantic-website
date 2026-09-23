@@ -52,15 +52,37 @@ export async function GET(request: Request) {
     );
   }
 
-  const imagesRes = await supabase
+  let imagesRes = await supabase
     .from("gallery_images")
     .select("id, client_id, url, public_id, width, height, caption, memory_date, created_at")
     .eq("client_id", client.id)
     .order("created_at", { ascending: false });
 
+  // Graceful fallback if caption or memory_date columns have not been migrated yet in Supabase
   if (imagesRes.error) {
+    console.warn("Retrying images query without caption/memory_date:", imagesRes.error.message);
+    const fallbackRes = await supabase
+      .from("gallery_images")
+      .select("id, client_id, url, public_id, width, height, created_at")
+      .eq("client_id", client.id)
+      .order("created_at", { ascending: false });
+
+    if (!fallbackRes.error && fallbackRes.data) {
+      imagesRes = {
+        ...fallbackRes,
+        data: fallbackRes.data.map((img) => ({
+          ...img,
+          caption: null,
+          memory_date: null,
+        })),
+      };
+    }
+  }
+
+  if (imagesRes.error) {
+    console.error("Failed to fetch gallery images:", imagesRes.error);
     return Response.json(
-      { error: "Failed to fetch images" },
+      { error: "Failed to fetch images", details: imagesRes.error.message },
       { status: 500 }
     );
   }
