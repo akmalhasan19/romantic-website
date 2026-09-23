@@ -85,6 +85,7 @@ function AmbientSparkles() {
 
 export function Scene3D() {
   const triggerScatter = useGalleryStore((s) => s.triggerScatter);
+  const activeMemoryIndex = useGalleryStore((s) => s.activeMemoryIndex);
 
   return (
     <div className="h-full w-full" onDoubleClick={triggerScatter}>
@@ -114,6 +115,7 @@ export function Scene3D() {
           maxDistance={40}
           enableDamping
           dampingFactor={0.05}
+          enabled={activeMemoryIndex === null}
         />
       </Canvas>
     </div>

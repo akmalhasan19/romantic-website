@@ -61,11 +61,16 @@ CREATE TABLE IF NOT EXISTS gallery_images (
   public_id TEXT NOT NULL,
   width INTEGER,
   height INTEGER,
-  created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+  caption TEXT,
+  memory_date DATE,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT gallery_images_caption_length CHECK (char_length(caption) <= 500)
 );
 
 ALTER TABLE gallery_images
-  ADD COLUMN IF NOT EXISTS client_id UUID;
+  ADD COLUMN IF NOT EXISTS client_id UUID,
+  ADD COLUMN IF NOT EXISTS caption TEXT,
+  ADD COLUMN IF NOT EXISTS memory_date DATE;
 
 DO $$
 BEGIN

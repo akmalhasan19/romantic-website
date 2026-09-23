@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { client_id, url, public_id, width, height } = parsed.data;
+  const { client_id, url, public_id, width, height, caption, memory_date } = parsed.data;
 
   const targetClient = await resolveTargetClientId(client_id);
   if (targetClient.error || !targetClient.clientId) {
@@ -111,6 +111,8 @@ export async function POST(request: Request) {
       public_id,
       width: width ?? null,
       height: height ?? null,
+      caption: caption ?? null,
+      memory_date: memory_date ?? null,
     })
     .select()
     .single();

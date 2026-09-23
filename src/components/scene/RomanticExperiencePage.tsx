@@ -7,7 +7,7 @@ import { Play, RotateCcw, Square } from "lucide-react";
 import { useGalleryStore } from "@/store/gallery-store";
 import { useCinematicStore } from "@/store/cinematic-store";
 import { Spinner } from "@/components/ui";
-import { InstructionOverlay } from "@/components/scene";
+import { InstructionOverlay, PhotoMemoryModal } from "@/components/scene";
 import { SongSwitcher } from "@/components/scene/SongSwitcher";
 
 const Scene3D = dynamic(
@@ -464,6 +464,7 @@ export function RomanticExperiencePage({ slug }: RomanticExperiencePageProps) {
     >
       <Scene3D />
       <InstructionOverlay />
+      <PhotoMemoryModal />
 
       <SongSwitcher
         isVisible={showSongSwitcher}

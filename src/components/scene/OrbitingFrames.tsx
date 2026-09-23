@@ -229,12 +229,27 @@ function InstancedPhotoFrames({
     }
   });
 
+  const openMemoryModal = useGalleryStore((s) => s.openMemoryModal);
+
   return (
     <>
       <instancedMesh
         ref={borderRef}
         args={[undefined, undefined, count]}
         frustumCulled={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (e.instanceId !== undefined && texLen > 0) {
+            openMemoryModal(e.instanceId % texLen);
+          }
+        }}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = "auto";
+        }}
       >
         <planeGeometry args={[FRAME_W, FRAME_H]} />
         <meshBasicMaterial color="#ffffff" />
@@ -248,6 +263,17 @@ function InstancedPhotoFrames({
           }}
           args={[undefined, undefined, instanceCounts[tIdx]]}
           frustumCulled={false}
+          onClick={(e) => {
+            e.stopPropagation();
+            openMemoryModal(tIdx);
+          }}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            document.body.style.cursor = "pointer";
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = "auto";
+          }}
         >
           <planeGeometry args={[FRAME_W - INSET * 2, FRAME_H - INSET * 2]} />
           <meshBasicMaterial map={tex} toneMapped={false} />
@@ -261,13 +287,17 @@ function InstancedPhotoFrames({
 
 function ScatteredFramesInner({ textures }: { textures: THREE.Texture[] }) {
   const particleCount = useGalleryStore((s) => s.settings.particle_count);
+  const activeMemoryIndex = useGalleryStore((s) => s.activeMemoryIndex);
   const count = Math.min(particleCount, 160);
 
   const diskAngleRef = useRef(0);
   const ringGroupRef = useRef<THREE.Group>(null);
+  const isModalOpen = activeMemoryIndex !== null;
 
   useFrame((_state, delta) => {
-    diskAngleRef.current += DISK_ROTATE_SPEED * delta;
+    // Pause rotation when the memory lightbox modal is open
+    const speed = isModalOpen ? 0 : DISK_ROTATE_SPEED;
+    diskAngleRef.current += speed * delta;
     if (ringGroupRef.current) {
       ringGroupRef.current.rotation.y = diskAngleRef.current;
     }

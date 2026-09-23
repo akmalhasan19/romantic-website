@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 
   const imagesRes = await supabase
     .from("gallery_images")
-    .select("id, client_id, url, public_id, width, height, created_at")
+    .select("id, client_id, url, public_id, width, height, caption, memory_date, created_at")
     .eq("client_id", client.id)
     .order("created_at", { ascending: false });
 

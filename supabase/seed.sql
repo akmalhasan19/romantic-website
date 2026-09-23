@@ -56,37 +56,47 @@ SET client_id = (SELECT id FROM clients WHERE slug = 'default')
 WHERE client_id IS NULL;
 
 -- Sample gallery images grouped per client (placeholder URLs - replace as needed).
-INSERT INTO gallery_images (client_id, url, public_id, width, height)
+INSERT INTO gallery_images (client_id, url, public_id, width, height, caption, memory_date)
 VALUES
   (
     (SELECT id FROM clients WHERE slug = 'default'),
     'https://res.cloudinary.com/demo/image/upload/v1/samples/landscapes/nature-mountains',
     'default/landscapes/nature-mountains',
     1920,
-    1080
+    1080,
+    'Momen matahari terbit terindah di puncak bersamamu.',
+    '2024-02-14'
   ),
   (
     (SELECT id FROM clients WHERE slug = 'default'),
     'https://res.cloudinary.com/demo/image/upload/v1/samples/food/spices',
     'default/food/spices',
     1920,
-    1280
+    1280,
+    'Makan malam pertama kita, hangat dan penuh tawa.',
+    '2024-05-20'
   ),
   (
     (SELECT id FROM clients WHERE slug = 'pasangan-demo'),
     'https://res.cloudinary.com/demo/image/upload/v1/samples/landscapes/beach-boat',
     'pasangan-demo/landscapes/beach-boat',
     1920,
-    1280
+    1280,
+    'Menikmati deburan ombak dan angin sore di pantai kenangan.',
+    '2024-07-08'
   ),
   (
     (SELECT id FROM clients WHERE slug = 'pasangan-demo'),
     'https://res.cloudinary.com/demo/image/upload/v1/samples/people/bicycle',
     'pasangan-demo/people/bicycle',
     1600,
-    1067
+    1067,
+    'Gowes santai sore hari, bahagia itu sesederhana ini.',
+    '2024-09-12'
   )
 ON CONFLICT (client_id, public_id) DO UPDATE SET
   url = EXCLUDED.url,
   width = EXCLUDED.width,
-  height = EXCLUDED.height;
+  height = EXCLUDED.height,
+  caption = EXCLUDED.caption,
+  memory_date = EXCLUDED.memory_date;

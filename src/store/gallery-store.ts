@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   ClientCreatePayload,
   ImagePayload,
+  ImageUpdatePayload,
   SettingsPayload,
 } from "@/lib/validators";
 
@@ -14,6 +15,8 @@ export interface GalleryImage {
   public_id: string;
   width: number | null;
   height: number | null;
+  caption?: string | null;
+  memory_date?: string | null;
   created_at: string;
 }
 
@@ -53,9 +56,16 @@ interface GalleryState {
   // Scatter animation
   scatterMix: number;
 
+  // Interactive Memory Modal
+  activeMemoryIndex: number | null;
+
   // ── Actions — public ───────────────────────────────────────────────
   fetchPublicData: (slug: string) => Promise<void>;
   triggerScatter: () => void;
+  openMemoryModal: (index: number) => void;
+  closeMemoryModal: () => void;
+  nextMemory: () => void;
+  prevMemory: () => void;
 
   // ── Actions — admin ────────────────────────────────────────────────
   fetchAdminClients: () => Promise<void>;
@@ -65,6 +75,10 @@ interface GalleryState {
   createClient: (payload: ClientCreatePayload) => Promise<GalleryClient>;
   addImage: (payload: ImagePayload) => Promise<GalleryImage>;
   deleteImage: (id: string) => Promise<void>;
+  updateImageCaption: (
+    id: string,
+    payload: ImageUpdatePayload
+  ) => Promise<GalleryImage>;
   updateSettings: (payload: SettingsPayload) => Promise<void>;
 }
 
@@ -165,6 +179,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   status: "idle",
   error: null,
   scatterMix: 0,
+  activeMemoryIndex: null,
 
   // ── Public actions ─────────────────────────────────────────────────
 
@@ -178,6 +193,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       images: [],
       settings: DEFAULT_SETTINGS,
       scatterMix: 0,
+      activeMemoryIndex: null,
     });
 
     try {
@@ -201,6 +217,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         },
         status: "ready",
         error: null,
+        activeMemoryIndex: null,
       });
     } catch (err) {
       if (requestId !== latestPublicRequestId) {
@@ -213,6 +230,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         settings: DEFAULT_SETTINGS,
         status: "error",
         error: toPublicErrorMessage(err),
+        activeMemoryIndex: null,
       });
     }
   },
@@ -226,6 +244,32 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       set({ scatterMix: 0 });
       scatterTimer = null;
     }, 2000);
+  },
+
+  openMemoryModal: (index: number) => {
+    const images = get().images;
+    if (index >= 0 && index < images.length) {
+      set({ activeMemoryIndex: index });
+    }
+  },
+
+  closeMemoryModal: () => {
+    set({ activeMemoryIndex: null });
+  },
+
+  nextMemory: () => {
+    const { images, activeMemoryIndex } = get();
+    if (images.length === 0 || activeMemoryIndex === null) return;
+    set({ activeMemoryIndex: (activeMemoryIndex + 1) % images.length });
+  },
+
+  prevMemory: () => {
+    const { images, activeMemoryIndex } = get();
+    if (images.length === 0 || activeMemoryIndex === null) return;
+    set({
+      activeMemoryIndex:
+        (activeMemoryIndex - 1 + images.length) % images.length,
+    });
   },
 
   // ── Admin actions ──────────────────────────────────────────────────
@@ -346,6 +390,28 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     } catch (err) {
       // Rollback on failure
       set({ images: prev, error: toErrorMessage(err) });
+      throw err;
+    }
+  },
+
+  updateImageCaption: async (id, payload) => {
+    const prev = get().images;
+    try {
+      const data = await fetchJson<{ image: GalleryImage }>(
+        `/api/admin/images/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      set({
+        images: prev.map((img) => (img.id === id ? data.image : img)),
+      });
+      return data.image;
+    } catch (err) {
+      set({ error: toErrorMessage(err) });
       throw err;
     }
   },

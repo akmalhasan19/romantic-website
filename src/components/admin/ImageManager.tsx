@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Upload, Trash2, ImageIcon } from "lucide-react";
-import { Card, Spinner } from "@/components/ui";
+import { Upload, Trash2, ImageIcon, Pencil, Calendar, MessageSquare, X, Check } from "lucide-react";
+import { Card, Spinner, Button, Input } from "@/components/ui";
 import { useGalleryStore, type GalleryImage } from "@/store/gallery-store";
 
 export function ImageManager() {
@@ -13,10 +13,18 @@ export function ImageManager() {
   const images = useGalleryStore((s) => s.images);
   const addImage = useGalleryStore((s) => s.addImage);
   const deleteImage = useGalleryStore((s) => s.deleteImage);
+  const updateImageCaption = useGalleryStore((s) => s.updateImageCaption);
 
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Edit Caption Modal State
+  const [editingImage, setEditingImage] = useState<GalleryImage | null>(null);
+  const [captionInput, setCaptionInput] = useState("");
+  const [memoryDateInput, setMemoryDateInput] = useState("");
+  const [savingCaption, setSavingCaption] = useState(false);
+  const [captionError, setCaptionError] = useState<string | null>(null);
 
   const handleUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,6 +97,40 @@ export function ImageManager() {
     },
     [deleteImage]
   );
+
+  const handleOpenEdit = useCallback((img: GalleryImage) => {
+    setEditingImage(img);
+    setCaptionInput(img.caption || "");
+    setMemoryDateInput(img.memory_date || "");
+    setCaptionError(null);
+  }, []);
+
+  const handleCloseEdit = useCallback(() => {
+    setEditingImage(null);
+    setCaptionInput("");
+    setMemoryDateInput("");
+    setCaptionError(null);
+  }, []);
+
+  const handleSaveCaption = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingImage) return;
+
+    setSavingCaption(true);
+    setCaptionError(null);
+
+    try {
+      await updateImageCaption(editingImage.id, {
+        caption: captionInput.trim() || null,
+        memory_date: memoryDateInput.trim() || null,
+      });
+      handleCloseEdit();
+    } catch (err) {
+      setCaptionError(err instanceof Error ? err.message : "Failed to update memory details");
+    } finally {
+      setSavingCaption(false);
+    }
+  }, [captionInput, editingImage, handleCloseEdit, memoryDateInput, updateImageCaption]);
 
   return (
     <Card>
@@ -169,28 +211,182 @@ export function ImageManager() {
           {images.map((img) => (
             <div
               key={img.id}
-              className="group relative overflow-hidden rounded-lg border border-border bg-surface-light"
+              className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface-light shadow-sm transition-all hover:border-accent/40"
             >
-              <img
-                src={img.url}
-                alt=""
-                loading="lazy"
-                className="aspect-square w-full object-cover transition-transform group-hover:scale-105"
-              />
-              <button
-                onClick={() => handleDelete(img)}
-                disabled={deletingId === img.id}
-                className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-red-600 group-hover:opacity-100 disabled:opacity-50"
-                title="Delete image"
-              >
-                {deletingId === img.id ? (
-                  <Spinner className="h-3.5 w-3.5 border-white border-t-transparent" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
+              <div className="relative aspect-square w-full overflow-hidden bg-black/40">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={img.url}
+                  alt={img.caption || ""}
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+
+                {/* Action buttons overlay */}
+                <div className="absolute right-2 top-2 flex items-center gap-1.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+                  <button
+                    onClick={() => handleOpenEdit(img)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-[#f0c8a0] transition-colors hover:bg-accent hover:text-black"
+                    title="Edit cerita / caption kenangan"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(img)}
+                    disabled={deletingId === img.id}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+                    title="Delete image"
+                  >
+                    {deletingId === img.id ? (
+                      <Spinner className="h-3.5 w-3.5 border-white border-t-transparent" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Has caption indicator icon */}
+                {img.caption && (
+                  <div
+                    className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-accent backdrop-blur-sm shadow"
+                    title="Memiliki cerita kenangan"
+                  >
+                    <MessageSquare className="h-3 w-3" />
+                  </div>
                 )}
-              </button>
+              </div>
+
+              {/* Bottom Caption & Date Info */}
+              <div className="flex flex-col justify-between p-2.5 text-xs bg-surface border-t border-border/60">
+                {img.caption ? (
+                  <p className="line-clamp-2 text-foreground font-serif italic" title={img.caption}>
+                    &ldquo;{img.caption}&rdquo;
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => handleOpenEdit(img)}
+                    className="text-left text-muted hover:text-accent italic truncate transition-colors"
+                  >
+                    + Tambah cerita momen...
+                  </button>
+                )}
+
+                {img.memory_date && (
+                  <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted">
+                    <Calendar className="h-3 w-3 text-accent" />
+                    <span>{img.memory_date}</span>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Edit Memory Caption Modal */}
+      {editingImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !savingCaption) {
+              handleCloseEdit();
+            }
+          }}
+        >
+          <div className="relative flex flex-col gap-4 max-w-md w-full rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border/80 pb-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-accent" />
+                <h3 className="text-base font-semibold text-foreground">
+                  Edit Cerita Kenangan
+                </h3>
+              </div>
+              <button
+                onClick={handleCloseEdit}
+                disabled={savingCaption}
+                className="rounded-lg p-1 text-muted hover:text-foreground transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Photo thumbnail */}
+            <div className="flex items-center gap-3 rounded-xl bg-surface-light p-2.5 border border-border/50">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={editingImage.url}
+                alt=""
+                className="h-16 w-16 rounded-lg object-cover"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted truncate">
+                  Public ID: {editingImage.public_id}
+                </p>
+                <p className="text-xs text-accent mt-0.5">
+                  Foto kenangan untuk {client?.name ?? "client"}
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveCaption} className="flex flex-col gap-4">
+              {/* Memory Date */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-foreground">
+                  Tanggal Kenangan (Opsional)
+                </label>
+                <input
+                  type="date"
+                  value={memoryDateInput}
+                  onChange={(e) => setMemoryDateInput(e.target.value)}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/50"
+                />
+              </div>
+
+              {/* Caption */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-foreground">
+                    Cerita / Catatan Kenangan
+                  </label>
+                  <span className="text-[11px] text-muted">
+                    {captionInput.length}/500
+                  </span>
+                </div>
+                <textarea
+                  value={captionInput}
+                  onChange={(e) => setCaptionInput(e.target.value)}
+                  placeholder="Contoh: Momen pertama kali kita nonton konser berdua di tengah hujan..."
+                  maxLength={500}
+                  rows={3}
+                  className="rounded-lg border border-border bg-surface p-3 text-sm text-foreground placeholder:text-muted/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/50 resize-none font-serif italic"
+                />
+              </div>
+
+              {captionError && (
+                <p className="text-xs text-red-400">{captionError}</p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/80">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseEdit}
+                  disabled={savingCaption}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="submit"
+                  loading={savingCaption}
+                  icon={<Check className="h-4 w-4" />}
+                >
+                  {savingCaption ? "Menyimpan..." : "Simpan Cerita"}
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </Card>

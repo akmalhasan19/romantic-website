@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     clientSlugSchema,
     imagePayloadSchema,
+    imageUpdateSchema,
     loginSchema,
     settingsSchema,
 } from "@/lib/validators";
@@ -327,3 +328,50 @@ describe("settingsSchema", () => {
         expect(result.success).toBe(false);
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// imageUpdateSchema & imagePayloadSchema caption/date tests
+// ═══════════════════════════════════════════════════════════════════
+
+describe("imageUpdateSchema", () => {
+    it("accepts valid caption and memory_date", () => {
+        const result = imageUpdateSchema.safeParse({
+            caption: "Liburan pertama kita ke Bali",
+            memory_date: "2024-06-15",
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.caption).toBe("Liburan pertama kita ke Bali");
+            expect(result.data.memory_date).toBe("2024-06-15");
+        }
+    });
+
+    it("accepts empty object (all fields optional)", () => {
+        const result = imageUpdateSchema.safeParse({});
+        expect(result.success).toBe(true);
+    });
+
+    it("accepts null for caption and memory_date", () => {
+        const result = imageUpdateSchema.safeParse({
+            caption: null,
+            memory_date: null,
+        });
+        expect(result.success).toBe(true);
+    });
+
+    it("rejects caption longer than 500 characters", () => {
+        const result = imageUpdateSchema.safeParse({
+            caption: "a".repeat(501),
+        });
+        expect(result.success).toBe(false);
+    });
+
+    it("rejects invalid memory_date format", () => {
+        const invalidDates = ["15-06-2024", "2024/06/15", "not-a-date", "2024-6-5"];
+        for (const date of invalidDates) {
+            const result = imageUpdateSchema.safeParse({ memory_date: date });
+            expect(result.success).toBe(false);
+        }
+    });
+});
+

@@ -20,6 +20,8 @@ export interface GalleryImageRow {
   public_id: string;
   width: number | null;
   height: number | null;
+  caption: string | null;
+  memory_date: string | null;
   created_at: string;
 }
 

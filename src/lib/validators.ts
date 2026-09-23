@@ -38,6 +38,21 @@ export const imagePayloadSchema = z.object({
   public_id: z.string().min(1, "Public ID is required"),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
+  caption: z.string().max(500, "Caption is too long").optional().nullable(),
+  memory_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format, expected YYYY-MM-DD")
+    .optional()
+    .nullable(),
+});
+
+export const imageUpdateSchema = z.object({
+  caption: z.string().max(500, "Caption is too long").optional().nullable(),
+  memory_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format, expected YYYY-MM-DD")
+    .optional()
+    .nullable(),
 });
 
 export const settingsSchema = z.object({
@@ -57,6 +72,7 @@ export const clientCreateSchema = z.object({
 
 export type LoginPayload = z.infer<typeof loginSchema>;
 export type ImagePayload = z.infer<typeof imagePayloadSchema>;
+export type ImageUpdatePayload = z.infer<typeof imageUpdateSchema>;
 export type SettingsPayload = z.infer<typeof settingsSchema>;
 export type ClientSlug = z.infer<typeof clientSlugSchema>;
 export type ClientId = z.infer<typeof clientIdSchema>;

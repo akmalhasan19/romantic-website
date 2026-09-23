@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { deleteCloudinaryImage } from "@/lib/cloudinary";
+import { imageUpdateSchema } from "@/lib/validators";
 
 /** DELETE /api/admin/images/[id] — remove an image from DB + Cloudinary */
 export async function DELETE(
@@ -47,4 +48,58 @@ export async function DELETE(
   }
 
   return Response.json({ ok: true });
+}
+
+/** PATCH /api/admin/images/[id] — update caption and memory_date for an image */
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  // Validate UUID format
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    return Response.json({ error: "Invalid image ID" }, { status: 400 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const parsed = imageUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json(
+      { error: "Validation failed", details: parsed.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  const updateFields: { caption?: string | null; memory_date?: string | null } = {};
+  if (parsed.data.caption !== undefined) {
+    updateFields.caption = parsed.data.caption;
+  }
+  if (parsed.data.memory_date !== undefined) {
+    updateFields.memory_date = parsed.data.memory_date;
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("gallery_images")
+    .update(updateFields)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    return Response.json(
+      { error: "Failed to update image" },
+      { status: 500 }
+    );
+  }
+
+  return Response.json({ image: data });
 }
