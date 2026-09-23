@@ -214,4 +214,21 @@ describe("gallery-store public route state", () => {
     expect(state.memoryOriginRect).toBeNull();
     expect(state.hiddenInstanceId).toBeNull();
   });
+
+  it("registers and calls getCurrentInstanceOrigin", () => {
+    const mockGetter = (id: number) => ({
+      x: 100 + id,
+      y: 200 + id,
+      width: 50,
+      height: 70,
+    });
+
+    useGalleryStore.getState().setGetCurrentInstanceOrigin(mockGetter);
+    const getter = useGalleryStore.getState().getCurrentInstanceOrigin;
+    expect(getter).toBeDefined();
+    expect(getter!(5)).toEqual({ x: 105, y: 205, width: 50, height: 70 });
+
+    useGalleryStore.getState().setGetCurrentInstanceOrigin(undefined);
+    expect(useGalleryStore.getState().getCurrentInstanceOrigin).toBeUndefined();
+  });
 });

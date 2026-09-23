@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, type TouchEvent } from "react";
 import { ChevronLeft, ChevronRight, X, Calendar, Sparkles } from "lucide-react";
-import { useGalleryStore } from "@/store/gallery-store";
+import { useGalleryStore, type MemoryModalOrigin } from "@/store/gallery-store";
 
 export function PhotoMemoryModal() {
   const images = useGalleryStore((s) => s.images);
@@ -33,12 +33,36 @@ export function PhotoMemoryModal() {
   const isOpen = activeMemoryIndex !== null && images.length > 0;
   const currentImage = isOpen && activeMemoryIndex < images.length ? images[activeMemoryIndex] : null;
 
-  // Handle closing with smooth reverse flight back to orbit
+  // Handle closing with smooth reverse flight back to the dynamically rotated orbit position
   const handleClose = useCallback(() => {
     if (isClosingRef.current) return;
     isClosingRef.current = true;
 
-    const { deltaX, deltaY, scale, rotate } = animGeometryRef.current;
+    // Calculate current destination where the empty slot has rotated to right now!
+    const { hiddenInstanceId, getCurrentInstanceOrigin } = useGalleryStore.getState();
+    let destOrigin: MemoryModalOrigin | null = null;
+    if (hiddenInstanceId !== null && getCurrentInstanceOrigin) {
+      destOrigin = getCurrentInstanceOrigin(hiddenInstanceId);
+    }
+    if (!destOrigin) {
+      destOrigin = memoryOriginRect;
+    }
+
+    let deltaX = animGeometryRef.current.deltaX;
+    let deltaY = animGeometryRef.current.deltaY;
+    let scale = animGeometryRef.current.scale;
+    let rotate = animGeometryRef.current.rotate;
+
+    if (cardRef.current && destOrigin) {
+      const rect = cardRef.current.getBoundingClientRect();
+      const finalCenterX = rect.left + rect.width / 2;
+      const finalCenterY = rect.top + rect.height / 2;
+      deltaX = destOrigin.x - finalCenterX;
+      deltaY = destOrigin.y - finalCenterY;
+      const cardWidth = rect.width || 420;
+      scale = Math.max(0.04, Math.min(0.25, destOrigin.width / cardWidth));
+      rotate = Math.max(-10, Math.min(10, (deltaX / (window.innerWidth / 2)) * 7));
+    }
 
     // 1. Header & Caption fade out quickly
     if (headerRef.current) {
@@ -79,7 +103,7 @@ export function PhotoMemoryModal() {
       );
     }
 
-    // 4. Card flies back and shrinks into the empty spot in the 3D orbit!
+    // 4. Card flies back and shrinks into the new rotated spot in the 3D orbit!
     if (cardRef.current) {
       const returnAnim = cardRef.current.animate(
         [
@@ -93,7 +117,7 @@ export function PhotoMemoryModal() {
           },
         ],
         {
-          duration: 420,
+          duration: 440,
           easing: "cubic-bezier(0.2, 0.9, 0.3, 1)",
           fill: "forwards",
         }
@@ -109,7 +133,7 @@ export function PhotoMemoryModal() {
       hasFlownInRef.current = false;
       isClosingRef.current = false;
     }
-  }, [closeMemoryModal]);
+  }, [closeMemoryModal, memoryOriginRect]);
 
   // Launch opening flight animation from exact click position before first browser paint
   useLayoutEffect(() => {

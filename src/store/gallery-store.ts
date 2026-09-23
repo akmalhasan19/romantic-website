@@ -67,6 +67,7 @@ interface GalleryState {
   activeMemoryIndex: number | null;
   memoryOriginRect: MemoryModalOrigin | null;
   hiddenInstanceId: number | null;
+  getCurrentInstanceOrigin?: (instanceId: number) => MemoryModalOrigin | null;
 
   // ── Actions — public ───────────────────────────────────────────────
   fetchPublicData: (slug: string) => Promise<void>;
@@ -78,6 +79,9 @@ interface GalleryState {
   ) => void;
   closeMemoryModal: () => void;
   setMemoryOriginRect: (originRect: MemoryModalOrigin | null) => void;
+  setGetCurrentInstanceOrigin: (
+    fn?: (instanceId: number) => MemoryModalOrigin | null
+  ) => void;
   nextMemory: () => void;
   prevMemory: () => void;
 
@@ -196,6 +200,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   activeMemoryIndex: null,
   memoryOriginRect: null,
   hiddenInstanceId: null,
+  getCurrentInstanceOrigin: undefined,
 
   // ── Public actions ─────────────────────────────────────────────────
 
@@ -293,6 +298,10 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
   setMemoryOriginRect: (originRect: MemoryModalOrigin | null) => {
     set({ memoryOriginRect: originRect });
+  },
+
+  setGetCurrentInstanceOrigin: (fn) => {
+    set({ getCurrentInstanceOrigin: fn });
   },
 
   nextMemory: () => {

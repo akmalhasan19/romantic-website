@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useMemo, useEffect } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { useGalleryStore, type MemoryModalOrigin } from "@/store/gallery-store";
@@ -11,6 +11,45 @@ const FRAME_W = 0.5;
 const FRAME_H = 0.67;
 const INSET = 0.04;
 const DISK_ROTATE_SPEED = 0.04; // rad/s ≈ 2.3°/s, rightward rotation
+
+function computeInstanceScreenRect(
+  instanceIndex: number,
+  scatteredPositions: THREE.Vector3[],
+  diskAngle: number,
+  camera: THREE.Camera
+): MemoryModalOrigin | null {
+  try {
+    const bp = scatteredPositions[instanceIndex];
+    if (!bp) return null;
+
+    const cosA = Math.cos(diskAngle);
+    const sinA = Math.sin(diskAngle);
+    const rx = bp.x * cosA - bp.z * sinA;
+    const ry = bp.y;
+    const rz = bp.x * sinA + bp.z * cosA;
+    const worldPos = new THREE.Vector3(rx, ry, rz);
+
+    const v = worldPos.clone().project(camera);
+    const screenX = (v.x * 0.5 + 0.5) * window.innerWidth;
+    const screenY = (-(v.y * 0.5) + 0.5) * window.innerHeight;
+
+    // Projected frame dimensions using distance to camera and perspective FOV
+    const dist = camera.position.distanceTo(worldPos);
+    const fov = (camera as THREE.PerspectiveCamera).fov ?? 60;
+    const vHeight = 2 * Math.tan((fov * Math.PI) / 360) * dist;
+    const projHeight = Math.max(32, Math.min(180, (FRAME_H / vHeight) * window.innerHeight));
+    const projWidth = Math.round(projHeight * (FRAME_W / FRAME_H));
+
+    return {
+      x: Math.round(screenX),
+      y: Math.round(screenY),
+      width: projWidth,
+      height: Math.round(projHeight),
+    };
+  } catch {
+    return null;
+  }
+}
 
 function computeScreenOriginFromEvent(e: {
   point: THREE.Vector3;
@@ -289,8 +328,29 @@ function InstancedPhotoFrames({
     }
   });
 
+  const { camera } = useThree();
   const hiddenInstanceId = useGalleryStore((s) => s.hiddenInstanceId);
   const openMemoryModal = useGalleryStore((s) => s.openMemoryModal);
+  const setGetCurrentInstanceOrigin = useGalleryStore(
+    (s) => s.setGetCurrentInstanceOrigin
+  );
+
+  useEffect(() => {
+    const fn = (instanceId: number): MemoryModalOrigin | null => {
+      const angle = diskAngleRef.current ?? 0;
+      return computeInstanceScreenRect(
+        instanceId,
+        scatteredPositions,
+        angle,
+        camera
+      );
+    };
+
+    setGetCurrentInstanceOrigin(fn);
+    return () => {
+      setGetCurrentInstanceOrigin(undefined);
+    };
+  }, [camera, scatteredPositions, diskAngleRef, setGetCurrentInstanceOrigin]);
 
   return (
     <>
@@ -353,17 +413,14 @@ function InstancedPhotoFrames({
 
 function ScatteredFramesInner({ textures }: { textures: THREE.Texture[] }) {
   const particleCount = useGalleryStore((s) => s.settings.particle_count);
-  const activeMemoryIndex = useGalleryStore((s) => s.activeMemoryIndex);
   const count = Math.min(particleCount, 160);
 
   const diskAngleRef = useRef(0);
   const ringGroupRef = useRef<THREE.Group>(null);
-  const isModalOpen = activeMemoryIndex !== null;
 
   useFrame((_state, delta) => {
-    // Pause rotation when the memory lightbox modal is open
-    const speed = isModalOpen ? 0 : DISK_ROTATE_SPEED;
-    diskAngleRef.current += speed * delta;
+    // Keep continuous smooth orbit rotation — never pause even when modal is open
+    diskAngleRef.current += DISK_ROTATE_SPEED * delta;
     if (ringGroupRef.current) {
       ringGroupRef.current.rotation.y = diskAngleRef.current;
     }
