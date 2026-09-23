@@ -16,6 +16,23 @@ export function PhotoMemoryModal() {
   const [touchDeltaX, setTouchDeltaX] = useState<number>(0);
   const [loadedRatios, setLoadedRatios] = useState<Record<string, number>>({});
 
+  // Responsive window dimensions tracking
+  const [windowDims, setWindowDims] = useState(() => ({
+    w: typeof window !== "undefined" ? window.innerWidth : 1024,
+    h: typeof window !== "undefined" ? window.innerHeight : 768,
+  }));
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowDims({
+        w: window.innerWidth,
+        h: window.innerHeight,
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const cardRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
@@ -40,13 +57,19 @@ export function PhotoMemoryModal() {
 
     const img = new Image();
     img.src = currentImage.url;
-    if (img.complete && img.naturalWidth && img.naturalHeight > 0) {
-      const r = img.naturalWidth / img.naturalHeight;
-      setLoadedRatios((prev) => (prev[currentImage.id] === r ? prev : { ...prev, [currentImage.id]: r }));
+    if (img.complete && (img.naturalWidth || img.width)) {
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      if (w && h && h > 0) {
+        const r = w / h;
+        setLoadedRatios((prev) => (prev[currentImage.id] === r ? prev : { ...prev, [currentImage.id]: r }));
+      }
     } else {
       img.onload = () => {
-        if (img.naturalWidth && img.naturalHeight > 0) {
-          const r = img.naturalWidth / img.naturalHeight;
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        if (w && h && h > 0) {
+          const r = w / h;
           setLoadedRatios((prev) => (prev[currentImage.id] === r ? prev : { ...prev, [currentImage.id]: r }));
         }
       };
@@ -66,6 +89,27 @@ export function PhotoMemoryModal() {
     }
     return 0.5 / 0.67; // default 3D aspect ratio
   }, [currentImage, loadedRatios, memoryOriginRect]);
+
+  // Compute exact photo dimensions so the white frame tightly hugs the photo without widening
+  const photoDims = useMemo(() => {
+    // Leave room for screen margins, close button, and bottom caption extension (~140px)
+    const availableH = Math.max(260, windowDims.h - 230);
+    const maxPhotoH = Math.min(availableH, 520);
+    const maxPhotoW = Math.min(windowDims.w - 48, 560);
+
+    let w = maxPhotoH * activeRatio;
+    let h = maxPhotoH;
+
+    if (w > maxPhotoW) {
+      w = maxPhotoW;
+      h = w / activeRatio;
+    }
+
+    const finalW = Math.round(Math.max(160, Math.min(w, maxPhotoW)));
+    const finalH = Math.round(Math.max(160, Math.min(h, maxPhotoH)));
+
+    return { w: finalW, h: finalH };
+  }, [windowDims, activeRatio]);
 
   // Handle closing with smooth reverse flight back to the dynamically rotating orbit position
   const handleClose = useCallback(() => {
@@ -93,8 +137,8 @@ export function PhotoMemoryModal() {
       const finalCenterY = rect.top + rect.height / 2;
       deltaX = destOrigin.x - finalCenterX;
       deltaY = destOrigin.y - finalCenterY;
-      const cardWidth = rect.width || 320;
-      scale = Math.max(0.04, Math.min(0.28, destOrigin.width / cardWidth));
+      const cardWidth = rect.width || (photoDims.w + 24);
+      scale = Math.max(0.04, Math.min(0.35, destOrigin.width / cardWidth));
       rotate = Math.max(-10, Math.min(10, (deltaX / (window.innerWidth / 2)) * 7));
     }
 
@@ -158,7 +202,7 @@ export function PhotoMemoryModal() {
       hasFlownInRef.current = false;
       isClosingRef.current = false;
     }
-  }, [closeMemoryModal, memoryOriginRect]);
+  }, [closeMemoryModal, memoryOriginRect, photoDims.w]);
 
   // Launch opening flight animation from exact click position before first browser paint
   useLayoutEffect(() => {
@@ -181,8 +225,8 @@ export function PhotoMemoryModal() {
 
     const deltaX = origin.x - finalCenterX;
     const deltaY = origin.y - finalCenterY;
-    const cardWidth = rect.width || 320;
-    const scale = Math.max(0.04, Math.min(0.28, origin.width / cardWidth));
+    const cardWidth = rect.width || (photoDims.w + 24);
+    const scale = Math.max(0.04, Math.min(0.35, origin.width / cardWidth));
     const rotate = Math.max(-10, Math.min(10, (deltaX / (window.innerWidth / 2)) * 7));
 
     animGeometryRef.current = { deltaX, deltaY, scale, rotate };
@@ -251,7 +295,7 @@ export function PhotoMemoryModal() {
     }
 
     hasFlownInRef.current = true;
-  }, [isOpen, memoryOriginRect]);
+  }, [isOpen, memoryOriginRect, photoDims.w]);
 
   // Reset state when closed externally
   useEffect(() => {
@@ -378,17 +422,20 @@ export function PhotoMemoryModal() {
         {/* Subtle decorative warm glow */}
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-3xl bg-[#e8a87c]/20 blur-3xl opacity-60" />
 
-        {/* Unified Authentic Polaroid / Photo Frame with Dynamic Aspect Ratio */}
-        <div className="relative flex flex-col items-center rounded-2xl bg-[#ffffff] p-3 sm:p-4 shadow-[0_25px_60px_-10px_rgba(0,0,0,0.85),0_10px_30px_rgba(0,0,0,0.4),0_0_40px_rgba(232,168,124,0.18)] border border-white/80 transition-all duration-300 ease-out select-none min-w-[260px] sm:min-w-[280px]">
-          {/* Photo Container matching exact photo aspect ratio */}
+        {/* Unified Authentic Polaroid / Photo Frame: EXACT WIDTH = PHOTO WIDTH + 24px */}
+        <div
+          className="relative flex flex-col items-center rounded-2xl bg-[#ffffff] shadow-[0_25px_60px_-10px_rgba(0,0,0,0.85),0_10px_30px_rgba(0,0,0,0.4),0_0_40px_rgba(232,168,124,0.18)] border border-white/80 transition-all duration-300 ease-out select-none"
+          style={{
+            width: `${photoDims.w + 24}px`,
+            padding: "12px 12px 16px 12px",
+          }}
+        >
+          {/* Photo Container: EXACT WIDTH & HEIGHT matching the aspect ratio */}
           <div
             className="relative overflow-hidden rounded-xl bg-black/5 shadow-inner transition-all duration-300"
             style={{
-              aspectRatio: activeRatio,
-              maxHeight: "min(52vh, 480px)",
-              maxWidth: activeRatio >= 1 ? "min(88vw, 540px)" : "min(86vw, 460px)",
-              width: activeRatio >= 1 ? "min(88vw, 540px)" : "auto",
-              height: activeRatio < 1 ? "min(52vh, 480px)" : "auto",
+              width: `${photoDims.w}px`,
+              height: `${photoDims.h}px`,
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -400,8 +447,10 @@ export function PhotoMemoryModal() {
               draggable={false}
               onLoad={(e) => {
                 const img = e.currentTarget;
-                if (img.naturalWidth && img.naturalHeight > 0) {
-                  const r = img.naturalWidth / img.naturalHeight;
+                const w = img.naturalWidth || img.width;
+                const h = img.naturalHeight || img.height;
+                if (w && h && h > 0) {
+                  const r = w / h;
                   setLoadedRatios((prev) =>
                     prev[currentImage.id] === r ? prev : { ...prev, [currentImage.id]: r }
                   );
@@ -413,20 +462,23 @@ export function PhotoMemoryModal() {
           {/* Extended Bottom Margin (Polaroid Chin) containing Captions & Meta */}
           <div
             ref={captionRef}
-            className="w-full flex flex-col items-center text-center pt-3 pb-1 px-1 transition-opacity duration-200"
-            style={{ opacity: 0 }}
+            className="w-full flex flex-col items-center text-center pt-3 pb-0 px-0.5 transition-opacity duration-200"
+            style={{
+              width: `${photoDims.w}px`,
+              opacity: 0,
+            }}
           >
             {/* Top Meta: Memory Count & Memory Date */}
-            <div className="flex items-center justify-center gap-2 mb-2 text-xs font-medium tracking-wide text-[#7d7063]">
+            <div className="flex items-center justify-center gap-2 mb-1.5 text-xs font-medium tracking-wide text-[#7d7063]">
               <span className="flex items-center gap-1 text-[#b5652e] font-semibold">
-                <Sparkles size={12} className="text-[#b5652e]" />
+                <Sparkles size={11} className="text-[#b5652e]" />
                 <span>Momen {memoryNumber} / {totalMemories}</span>
               </span>
               {currentImage.memory_date && (
                 <>
                   <span className="text-[#d0c2b2]">•</span>
                   <span className="flex items-center gap-1 text-[#7d7063]">
-                    <Calendar size={12} className="text-[#968270]" />
+                    <Calendar size={11} className="text-[#968270]" />
                     <span>{currentImage.memory_date}</span>
                   </span>
                 </>
@@ -435,17 +487,17 @@ export function PhotoMemoryModal() {
 
             {/* Romantic Caption in Editorial Serif */}
             {currentImage.caption ? (
-              <p className="font-serif italic text-base sm:text-lg leading-relaxed text-[#231e1a] text-balance max-h-[16vh] overflow-y-auto px-2">
+              <p className="font-serif italic text-base leading-snug text-[#231e1a] text-balance max-h-[14vh] overflow-y-auto px-1 w-full break-words">
                 &ldquo;{currentImage.caption}&rdquo;
               </p>
             ) : (
-              <p className="font-serif italic text-sm sm:text-base text-[#7d7063] text-balance px-2">
+              <p className="font-serif italic text-sm text-[#7d7063] text-balance px-1 w-full break-words">
                 Momen indah yang tak lekang oleh waktu bersamamu.
               </p>
             )}
 
             {/* Discreet Navigation Tip */}
-            <p className="mt-2.5 text-[10px] sm:text-[11px] text-[#9e9082] tracking-wider select-none">
+            <p className="mt-2 text-[10px] sm:text-[11px] text-[#9e9082] tracking-wider select-none whitespace-nowrap">
               ◀ geser layar atau gunakan tombol panah ▶
             </p>
           </div>

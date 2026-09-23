@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo, useEffect, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
@@ -259,6 +259,32 @@ function InstancedPhotoFrames({
 
   const images = useGalleryStore((s) => s.images);
   const baseAspect = FRAME_W / FRAME_H; // ~0.746
+  const [textureVersion, setTextureVersion] = useState(0);
+
+  useEffect(() => {
+    let checkTimer: NodeJS.Timeout | null = null;
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      let anyLoaded = false;
+      for (const tex of textures) {
+        const htmlImg = (tex as unknown as { image?: HTMLImageElement }).image;
+        if (htmlImg && (htmlImg.naturalWidth || htmlImg.width)) {
+          anyLoaded = true;
+          break;
+        }
+      }
+      if (anyLoaded) {
+        setTextureVersion((v) => v + 1);
+      } else if (attempts < 10) {
+        checkTimer = setTimeout(check, 100);
+      }
+    };
+    check();
+    return () => {
+      if (checkTimer) clearTimeout(checkTimer);
+    };
+  }, [textures]);
 
   const imageRatios = useMemo(() => {
     return textures.map((tex, idx) => {
@@ -267,12 +293,14 @@ function InstancedPhotoFrames({
         return imgData.width / imgData.height;
       }
       const htmlImg = (tex as unknown as { image?: HTMLImageElement }).image;
-      if (htmlImg?.width && htmlImg?.height && htmlImg.height > 0) {
-        return htmlImg.width / htmlImg.height;
+      const w = htmlImg?.naturalWidth || htmlImg?.width;
+      const h = htmlImg?.naturalHeight || htmlImg?.height;
+      if (w && h && h > 0) {
+        return w / h;
       }
       return baseAspect;
     });
-  }, [textures, images, baseAspect]);
+  }, [textures, images, baseAspect, textureVersion]);
 
   // Hide all instances at origin before useFrame positions them
   useEffect(() => {
