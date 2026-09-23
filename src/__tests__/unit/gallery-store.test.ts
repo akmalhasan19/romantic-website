@@ -187,26 +187,31 @@ describe("gallery-store public route state", () => {
       ],
       activeMemoryIndex: null,
       memoryOriginRect: null,
+      hiddenInstanceId: null,
     });
 
     const origin = { x: 320, y: 240, width: 64, height: 86 };
-    useGalleryStore.getState().openMemoryModal(1, origin);
+    useGalleryStore.getState().openMemoryModal(1, origin, 7);
 
     let state = useGalleryStore.getState();
     expect(state.activeMemoryIndex).toBe(1);
     expect(state.memoryOriginRect).toEqual(origin);
+    expect(state.hiddenInstanceId).toBe(7);
 
     useGalleryStore.getState().nextMemory();
     state = useGalleryStore.getState();
     expect(state.activeMemoryIndex).toBe(0);
+    expect(state.hiddenInstanceId).toBe(7);
 
     useGalleryStore.getState().prevMemory();
     state = useGalleryStore.getState();
     expect(state.activeMemoryIndex).toBe(1);
+    expect(state.hiddenInstanceId).toBe(7);
 
     useGalleryStore.getState().closeMemoryModal();
     state = useGalleryStore.getState();
     expect(state.activeMemoryIndex).toBeNull();
     expect(state.memoryOriginRect).toBeNull();
+    expect(state.hiddenInstanceId).toBeNull();
   });
 });

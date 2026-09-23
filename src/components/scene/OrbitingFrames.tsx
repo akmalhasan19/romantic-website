@@ -17,34 +17,44 @@ function computeScreenOriginFromEvent(e: {
   camera: THREE.Camera;
   clientX?: number;
   clientY?: number;
+  nativeEvent?: MouseEvent | PointerEvent;
 }): MemoryModalOrigin {
   try {
     const v = e.point.clone().project(e.camera);
-    const screenX = (v.x * 0.5 + 0.5) * window.innerWidth;
-    const screenY = (-(v.y * 0.5) + 0.5) * window.innerHeight;
+    let screenX = (v.x * 0.5 + 0.5) * window.innerWidth;
+    let screenY = (-(v.y * 0.5) + 0.5) * window.innerHeight;
 
-    // Projected frame dimensions
-    const right = new THREE.Vector3(FRAME_W / 2, 0, 0).applyQuaternion(e.camera.quaternion);
-    const top = new THREE.Vector3(0, FRAME_H / 2, 0).applyQuaternion(e.camera.quaternion);
-    const corner = e.point.clone().add(right).add(top).project(e.camera);
-    const cornerX = (corner.x * 0.5 + 0.5) * window.innerWidth;
-    const cornerY = (-(corner.y * 0.5) + 0.5) * window.innerHeight;
+    // Projected frame dimensions using distance to camera and perspective FOV
+    const dist = e.camera.position.distanceTo(e.point);
+    const fov = (e.camera as THREE.PerspectiveCamera).fov ?? 60;
+    const vHeight = 2 * Math.tan((fov * Math.PI) / 360) * dist;
+    const projHeight = Math.max(32, Math.min(180, (FRAME_H / vHeight) * window.innerHeight));
+    const projWidth = Math.round(projHeight * (FRAME_W / FRAME_H));
 
-    const width = Math.max(36, Math.abs(cornerX - screenX) * 2);
-    const height = Math.max(48, Math.abs(cornerY - screenY) * 2);
+    // Fallback if projection coordinates are off
+    const pointerX = e.clientX ?? e.nativeEvent?.clientX;
+    const pointerY = e.clientY ?? e.nativeEvent?.clientY;
+    if (isNaN(screenX) || isNaN(screenY) || screenX < -100 || screenX > window.innerWidth + 100) {
+      if (pointerX !== undefined && pointerY !== undefined) {
+        screenX = pointerX;
+        screenY = pointerY;
+      }
+    }
 
     return {
       x: Math.round(screenX),
       y: Math.round(screenY),
-      width: Math.round(width),
-      height: Math.round(height),
+      width: projWidth,
+      height: Math.round(projHeight),
     };
   } catch {
+    const fallbackX = e.clientX ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 500);
+    const fallbackY = e.clientY ?? (typeof window !== "undefined" ? window.innerHeight / 2 : 400);
     return {
-      x: e.clientX ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 500),
-      y: e.clientY ?? (typeof window !== "undefined" ? window.innerHeight / 2 : 400),
-      width: 50,
-      height: 67,
+      x: fallbackX,
+      y: fallbackY,
+      width: 48,
+      height: 64,
     };
   }
 }
@@ -237,6 +247,21 @@ function InstancedPhotoFrames({
       const bp = scatteredPositions[i];
       if (!bp) continue;
 
+      const texIdx = i % texLen;
+      const photoMesh = photoRefs.current.get(texIdx);
+
+      // If this instance is currently "terambil" (open in modal), hide it completely from orbit!
+      if (i === hiddenInstanceId) {
+        dummy.position.set(0, -9999, 0);
+        dummy.scale.setScalar(0);
+        dummy.updateMatrix();
+        if (photoMesh) {
+          photoMesh.setMatrixAt(countersRef.current[texIdx]++, dummy.matrix);
+        }
+        border.setMatrixAt(i, dummy.matrix);
+        continue;
+      }
+
       // Rotate position around Y axis by disk angle
       const rx = bp.x * cosA - bp.z * sinA;
       const rz = bp.x * sinA + bp.z * cosA;
@@ -248,8 +273,6 @@ function InstancedPhotoFrames({
       dummy.updateMatrix();
 
       // Photo instance
-      const texIdx = i % texLen;
-      const photoMesh = photoRefs.current.get(texIdx);
       if (photoMesh) {
         photoMesh.setMatrixAt(countersRef.current[texIdx]++, dummy.matrix);
       }
@@ -266,6 +289,7 @@ function InstancedPhotoFrames({
     }
   });
 
+  const hiddenInstanceId = useGalleryStore((s) => s.hiddenInstanceId);
   const openMemoryModal = useGalleryStore((s) => s.openMemoryModal);
 
   return (
@@ -277,8 +301,9 @@ function InstancedPhotoFrames({
         onClick={(e) => {
           e.stopPropagation();
           if (e.instanceId !== undefined && texLen > 0) {
+            const globalIdx = e.instanceId;
             const origin = computeScreenOriginFromEvent(e);
-            openMemoryModal(e.instanceId % texLen, origin);
+            openMemoryModal(globalIdx % texLen, origin, globalIdx);
           }
         }}
         onPointerOver={(e) => {
@@ -304,7 +329,9 @@ function InstancedPhotoFrames({
           onClick={(e) => {
             e.stopPropagation();
             const origin = computeScreenOriginFromEvent(e);
-            openMemoryModal(tIdx, origin);
+            const globalIdx =
+              e.instanceId !== undefined ? e.instanceId * texLen + tIdx : null;
+            openMemoryModal(tIdx, origin, globalIdx);
           }}
           onPointerOver={(e) => {
             e.stopPropagation();
