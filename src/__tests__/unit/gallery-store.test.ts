@@ -231,4 +231,36 @@ describe("gallery-store public route state", () => {
     useGalleryStore.getState().setGetCurrentInstanceOrigin(undefined);
     expect(useGalleryStore.getState().getCurrentInstanceOrigin).toBeUndefined();
   });
+
+  it("handles 9:16 and custom aspect ratio images with matching origin projections", () => {
+    // 9:16 aspect ratio image
+    const portraitImage = {
+      id: "img-portrait",
+      url: "https://example.com/portrait.jpg",
+      public_id: "portrait",
+      width: 1080,
+      height: 1920,
+      created_at: "2024-01-01",
+    };
+
+    useGalleryStore.setState({
+      images: [portraitImage],
+      activeMemoryIndex: null,
+      memoryOriginRect: null,
+      hiddenInstanceId: null,
+    });
+
+    const ratio = portraitImage.width / portraitImage.height; // 9:16 = 0.5625
+    const projHeight = 80;
+    const projWidth = Math.round(projHeight * ratio); // 45px
+
+    const origin = { x: 400, y: 300, width: projWidth, height: projHeight };
+    useGalleryStore.getState().openMemoryModal(0, origin, 3);
+
+    const state = useGalleryStore.getState();
+    expect(state.activeMemoryIndex).toBe(0);
+    expect(state.memoryOriginRect?.width).toBe(45);
+    expect(state.memoryOriginRect?.height).toBe(80);
+    expect(state.memoryOriginRect!.width / state.memoryOriginRect!.height).toBeCloseTo(0.5625, 2);
+  });
 });

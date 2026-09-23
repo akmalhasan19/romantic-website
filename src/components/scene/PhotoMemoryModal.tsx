@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, type TouchEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type TouchEvent } from "react";
 import { ChevronLeft, ChevronRight, X, Calendar, Sparkles } from "lucide-react";
 import { useGalleryStore, type MemoryModalOrigin } from "@/store/gallery-store";
 
@@ -14,10 +14,10 @@ export function PhotoMemoryModal() {
 
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchDeltaX, setTouchDeltaX] = useState<number>(0);
+  const [loadedRatios, setLoadedRatios] = useState<Record<string, number>>({});
 
   const cardRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
 
@@ -33,7 +33,41 @@ export function PhotoMemoryModal() {
   const isOpen = activeMemoryIndex !== null && images.length > 0;
   const currentImage = isOpen && activeMemoryIndex < images.length ? images[activeMemoryIndex] : null;
 
-  // Handle closing with smooth reverse flight back to the dynamically rotated orbit position
+  // Preload and detect image aspect ratio if not already provided in metadata
+  useEffect(() => {
+    if (!currentImage?.url) return;
+    if (currentImage.width && currentImage.height && currentImage.height > 0) return;
+
+    const img = new Image();
+    img.src = currentImage.url;
+    if (img.complete && img.naturalWidth && img.naturalHeight > 0) {
+      const r = img.naturalWidth / img.naturalHeight;
+      setLoadedRatios((prev) => (prev[currentImage.id] === r ? prev : { ...prev, [currentImage.id]: r }));
+    } else {
+      img.onload = () => {
+        if (img.naturalWidth && img.naturalHeight > 0) {
+          const r = img.naturalWidth / img.naturalHeight;
+          setLoadedRatios((prev) => (prev[currentImage.id] === r ? prev : { ...prev, [currentImage.id]: r }));
+        }
+      };
+    }
+  }, [currentImage]);
+
+  // Compute active ratio: metadata > loaded texture > origin rect > 3D base aspect (~0.746)
+  const activeRatio = useMemo(() => {
+    if (currentImage?.width && currentImage?.height && currentImage.height > 0) {
+      return currentImage.width / currentImage.height;
+    }
+    if (currentImage && loadedRatios[currentImage.id]) {
+      return loadedRatios[currentImage.id];
+    }
+    if (memoryOriginRect && memoryOriginRect.height > 0) {
+      return memoryOriginRect.width / memoryOriginRect.height;
+    }
+    return 0.5 / 0.67; // default 3D aspect ratio
+  }, [currentImage, loadedRatios, memoryOriginRect]);
+
+  // Handle closing with smooth reverse flight back to the dynamically rotating orbit position
   const handleClose = useCallback(() => {
     if (isClosingRef.current) return;
     isClosingRef.current = true;
@@ -59,28 +93,19 @@ export function PhotoMemoryModal() {
       const finalCenterY = rect.top + rect.height / 2;
       deltaX = destOrigin.x - finalCenterX;
       deltaY = destOrigin.y - finalCenterY;
-      const cardWidth = rect.width || 420;
-      scale = Math.max(0.04, Math.min(0.25, destOrigin.width / cardWidth));
+      const cardWidth = rect.width || 320;
+      scale = Math.max(0.04, Math.min(0.28, destOrigin.width / cardWidth));
       rotate = Math.max(-10, Math.min(10, (deltaX / (window.innerWidth / 2)) * 7));
     }
 
-    // 1. Header & Caption fade out quickly
-    if (headerRef.current) {
-      headerRef.current.animate(
-        [
-          { opacity: "1", transform: "translateY(0px)" },
-          { opacity: "0", transform: "translateY(-8px)" },
-        ],
-        { duration: 150, easing: "ease-out", fill: "forwards" }
-      );
-    }
+    // 1. Caption inside the frame fades out quickly
     if (captionRef.current) {
       captionRef.current.animate(
         [
           { opacity: "1", transform: "translateY(0px)" },
-          { opacity: "0", transform: "translateY(10px)" },
+          { opacity: "0", transform: "translateY(6px)" },
         ],
-        { duration: 150, easing: "ease-out", fill: "forwards" }
+        { duration: 140, easing: "ease-out", fill: "forwards" }
       );
     }
 
@@ -88,7 +113,7 @@ export function PhotoMemoryModal() {
     if (controlsRef.current) {
       controlsRef.current.animate(
         [{ opacity: "1" }, { opacity: "0" }],
-        { duration: 150, easing: "ease-out", fill: "forwards" }
+        { duration: 140, easing: "ease-out", fill: "forwards" }
       );
     }
 
@@ -156,8 +181,8 @@ export function PhotoMemoryModal() {
 
     const deltaX = origin.x - finalCenterX;
     const deltaY = origin.y - finalCenterY;
-    const cardWidth = rect.width || 420;
-    const scale = Math.max(0.04, Math.min(0.25, origin.width / cardWidth));
+    const cardWidth = rect.width || 320;
+    const scale = Math.max(0.04, Math.min(0.28, origin.width / cardWidth));
     const rotate = Math.max(-10, Math.min(10, (deltaX / (window.innerWidth / 2)) * 7));
 
     animGeometryRef.current = { deltaX, deltaY, scale, rotate };
@@ -196,11 +221,11 @@ export function PhotoMemoryModal() {
       );
     }
 
-    // 3. Staggered reveal for header as photo approaches center
-    if (headerRef.current) {
-      headerRef.current.animate(
+    // 3. Staggered reveal for caption inside the white chin as photo approaches center
+    if (captionRef.current) {
+      captionRef.current.animate(
         [
-          { opacity: "0", transform: "translateY(-10px)" },
+          { opacity: "0", transform: "translateY(12px)" },
           { opacity: "1", transform: "translateY(0px)" },
         ],
         {
@@ -212,23 +237,7 @@ export function PhotoMemoryModal() {
       );
     }
 
-    // 4. Staggered reveal for caption as photo approaches center
-    if (captionRef.current) {
-      captionRef.current.animate(
-        [
-          { opacity: "0", transform: "translateY(16px)" },
-          { opacity: "1", transform: "translateY(0px)" },
-        ],
-        {
-          duration: 400,
-          delay: 240,
-          easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-          fill: "forwards",
-        }
-      );
-    }
-
-    // 5. Staggered reveal for controls (close button, prev/next)
+    // 4. Staggered reveal for controls (close button, prev/next)
     if (controlsRef.current) {
       controlsRef.current.animate(
         [{ opacity: "0" }, { opacity: "1" }],
@@ -356,66 +365,90 @@ export function PhotoMemoryModal() {
         )}
       </div>
 
-      {/* The Flying Memory Card (Bingkai & Fotonya yang meluncur mendekat ke layar) */}
+      {/* The Flying Memory Card (Bingkai Foto Persis Seperti yang Diclick) */}
       <div
         ref={cardRef}
         onClick={(e) => e.stopPropagation()}
-        className="relative z-[125] flex flex-col items-center max-w-lg sm:max-w-xl md:max-w-2xl w-full max-h-[92vh] will-change-transform"
+        className="relative z-[125] flex flex-col items-center will-change-transform"
+        style={{
+          maxWidth: "calc(100vw - 32px)",
+          maxHeight: "calc(100vh - 48px)",
+        }}
       >
         {/* Subtle decorative warm glow */}
-        <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 w-80 h-40 rounded-full bg-[#e8a87c]/20 blur-3xl" />
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-3xl bg-[#e8a87c]/20 blur-3xl opacity-60" />
 
-        {/* Header Indicator (staggered reveal via headerRef) */}
-        <div ref={headerRef} className="w-full flex items-center justify-between mb-2.5 px-2" style={{ opacity: 0 }}>
-          <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.25em] text-[#e8a87c] font-medium drop-shadow">
-            <Sparkles size={13} className="text-[#e8a87c]" />
-            <span>
-              Momen Kenangan {memoryNumber} / {totalMemories}
-            </span>
-          </div>
-
-          {currentImage.memory_date && (
-            <div className="flex items-center gap-1.5 text-xs text-white/80 bg-white/10 border border-white/15 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm">
-              <Calendar size={12} className="text-[#e8a87c]" />
-              <span>{currentImage.memory_date}</span>
-            </div>
-          )}
-        </div>
-
-        {/* The Authentic Photo Frame (Bingkai Putih Presisi & Foto di Dalamnya) */}
-        <div className="relative flex flex-col items-center w-full rounded-2xl sm:rounded-3xl bg-[#fdfbf7] p-2.5 sm:p-3.5 pb-3.5 sm:pb-4 shadow-[0_25px_60px_-10px_rgba(0,0,0,0.85),0_0_45px_rgba(232,168,124,0.25)] border border-white/40">
-          <div className="relative flex items-center justify-center w-full max-h-[52vh] sm:max-h-[58vh] overflow-hidden rounded-xl sm:rounded-2xl bg-black/95 shadow-inner">
+        {/* Unified Authentic Polaroid / Photo Frame with Dynamic Aspect Ratio */}
+        <div className="relative flex flex-col items-center rounded-2xl bg-[#ffffff] p-3 sm:p-4 shadow-[0_25px_60px_-10px_rgba(0,0,0,0.85),0_10px_30px_rgba(0,0,0,0.4),0_0_40px_rgba(232,168,124,0.18)] border border-white/80 transition-all duration-300 ease-out select-none min-w-[260px] sm:min-w-[280px]">
+          {/* Photo Container matching exact photo aspect ratio */}
+          <div
+            className="relative overflow-hidden rounded-xl bg-black/5 shadow-inner transition-all duration-300"
+            style={{
+              aspectRatio: activeRatio,
+              maxHeight: "min(52vh, 480px)",
+              maxWidth: activeRatio >= 1 ? "min(88vw, 540px)" : "min(86vw, 460px)",
+              width: activeRatio >= 1 ? "min(88vw, 540px)" : "auto",
+              height: activeRatio < 1 ? "min(52vh, 480px)" : "auto",
+            }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               key={currentImage.id}
               src={currentImage.url}
               alt={currentImage.caption || `Kenangan ${memoryNumber}`}
-              className="max-h-[52vh] sm:max-h-[58vh] max-w-full w-auto object-contain select-none transition-all duration-300 animate-in fade-in"
+              className="w-full h-full object-cover select-none transition-opacity duration-300 animate-in fade-in"
               draggable={false}
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                if (img.naturalWidth && img.naturalHeight > 0) {
+                  const r = img.naturalWidth / img.naturalHeight;
+                  setLoadedRatios((prev) =>
+                    prev[currentImage.id] === r ? prev : { ...prev, [currentImage.id]: r }
+                  );
+                }
+              }}
             />
           </div>
-        </div>
 
-        {/* Caption Card (staggered reveal via captionRef) */}
-        <div
-          ref={captionRef}
-          className="w-full mt-3 text-center px-5 py-3.5 rounded-2xl bg-black/75 border border-white/15 backdrop-blur-md shadow-2xl transition-all"
-          style={{ opacity: 0 }}
-        >
-          {currentImage.caption ? (
-            <p className="font-serif italic text-base sm:text-lg leading-relaxed text-[#f0e6d3] text-balance">
-              &ldquo;{currentImage.caption}&rdquo;
-            </p>
-          ) : (
-            <p className="font-serif italic text-sm sm:text-base text-white/50">
-              Momen indah yang tak lekang oleh waktu bersamamu.
-            </p>
-          )}
+          {/* Extended Bottom Margin (Polaroid Chin) containing Captions & Meta */}
+          <div
+            ref={captionRef}
+            className="w-full flex flex-col items-center text-center pt-3 pb-1 px-1 transition-opacity duration-200"
+            style={{ opacity: 0 }}
+          >
+            {/* Top Meta: Memory Count & Memory Date */}
+            <div className="flex items-center justify-center gap-2 mb-2 text-xs font-medium tracking-wide text-[#7d7063]">
+              <span className="flex items-center gap-1 text-[#b5652e] font-semibold">
+                <Sparkles size={12} className="text-[#b5652e]" />
+                <span>Momen {memoryNumber} / {totalMemories}</span>
+              </span>
+              {currentImage.memory_date && (
+                <>
+                  <span className="text-[#d0c2b2]">•</span>
+                  <span className="flex items-center gap-1 text-[#7d7063]">
+                    <Calendar size={12} className="text-[#968270]" />
+                    <span>{currentImage.memory_date}</span>
+                  </span>
+                </>
+              )}
+            </div>
 
-          {/* Footer tip */}
-          <p className="mt-2 text-[10px] sm:text-[11px] text-white/40 tracking-wider">
-            Gunakan tombol panah ◀ ▶ atau geser layar untuk berpindah foto
-          </p>
+            {/* Romantic Caption in Editorial Serif */}
+            {currentImage.caption ? (
+              <p className="font-serif italic text-base sm:text-lg leading-relaxed text-[#231e1a] text-balance max-h-[16vh] overflow-y-auto px-2">
+                &ldquo;{currentImage.caption}&rdquo;
+              </p>
+            ) : (
+              <p className="font-serif italic text-sm sm:text-base text-[#7d7063] text-balance px-2">
+                Momen indah yang tak lekang oleh waktu bersamamu.
+              </p>
+            )}
+
+            {/* Discreet Navigation Tip */}
+            <p className="mt-2.5 text-[10px] sm:text-[11px] text-[#9e9082] tracking-wider select-none">
+              ◀ geser layar atau gunakan tombol panah ▶
+            </p>
+          </div>
         </div>
       </div>
     </div>

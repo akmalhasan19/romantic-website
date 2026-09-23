@@ -16,7 +16,8 @@ function computeInstanceScreenRect(
   instanceIndex: number,
   scatteredPositions: THREE.Vector3[],
   diskAngle: number,
-  camera: THREE.Camera
+  camera: THREE.Camera,
+  aspectRatio: number = FRAME_W / FRAME_H
 ): MemoryModalOrigin | null {
   try {
     const bp = scatteredPositions[instanceIndex];
@@ -33,12 +34,12 @@ function computeInstanceScreenRect(
     const screenX = (v.x * 0.5 + 0.5) * window.innerWidth;
     const screenY = (-(v.y * 0.5) + 0.5) * window.innerHeight;
 
-    // Projected frame dimensions using distance to camera and perspective FOV
+    // Projected frame dimensions using distance to camera, perspective FOV, and custom aspect ratio
     const dist = camera.position.distanceTo(worldPos);
     const fov = (camera as THREE.PerspectiveCamera).fov ?? 60;
     const vHeight = 2 * Math.tan((fov * Math.PI) / 360) * dist;
     const projHeight = Math.max(32, Math.min(180, (FRAME_H / vHeight) * window.innerHeight));
-    const projWidth = Math.round(projHeight * (FRAME_W / FRAME_H));
+    const projWidth = Math.round(projHeight * aspectRatio);
 
     return {
       x: Math.round(screenX),
@@ -51,24 +52,27 @@ function computeInstanceScreenRect(
   }
 }
 
-function computeScreenOriginFromEvent(e: {
-  point: THREE.Vector3;
-  camera: THREE.Camera;
-  clientX?: number;
-  clientY?: number;
-  nativeEvent?: MouseEvent | PointerEvent;
-}): MemoryModalOrigin {
+function computeScreenOriginFromEvent(
+  e: {
+    point: THREE.Vector3;
+    camera: THREE.Camera;
+    clientX?: number;
+    clientY?: number;
+    nativeEvent?: MouseEvent | PointerEvent;
+  },
+  aspectRatio: number = FRAME_W / FRAME_H
+): MemoryModalOrigin {
   try {
     const v = e.point.clone().project(e.camera);
     let screenX = (v.x * 0.5 + 0.5) * window.innerWidth;
     let screenY = (-(v.y * 0.5) + 0.5) * window.innerHeight;
 
-    // Projected frame dimensions using distance to camera and perspective FOV
+    // Projected frame dimensions using distance to camera, perspective FOV, and custom aspect ratio
     const dist = e.camera.position.distanceTo(e.point);
     const fov = (e.camera as THREE.PerspectiveCamera).fov ?? 60;
     const vHeight = 2 * Math.tan((fov * Math.PI) / 360) * dist;
     const projHeight = Math.max(32, Math.min(180, (FRAME_H / vHeight) * window.innerHeight));
-    const projWidth = Math.round(projHeight * (FRAME_W / FRAME_H));
+    const projWidth = Math.round(projHeight * aspectRatio);
 
     // Fallback if projection coordinates are off
     const pointerX = e.clientX ?? e.nativeEvent?.clientX;
@@ -92,7 +96,7 @@ function computeScreenOriginFromEvent(e: {
     return {
       x: fallbackX,
       y: fallbackY,
-      width: 48,
+      width: Math.round(64 * aspectRatio),
       height: 64,
     };
   }
@@ -253,6 +257,23 @@ function InstancedPhotoFrames({
   // Persistent counter array — avoids allocation every frame
   const countersRef = useRef<number[]>([]);
 
+  const images = useGalleryStore((s) => s.images);
+  const baseAspect = FRAME_W / FRAME_H; // ~0.746
+
+  const imageRatios = useMemo(() => {
+    return textures.map((tex, idx) => {
+      const imgData = images[idx];
+      if (imgData?.width && imgData?.height && imgData.height > 0) {
+        return imgData.width / imgData.height;
+      }
+      const htmlImg = (tex as unknown as { image?: HTMLImageElement }).image;
+      if (htmlImg?.width && htmlImg?.height && htmlImg.height > 0) {
+        return htmlImg.width / htmlImg.height;
+      }
+      return baseAspect;
+    });
+  }, [textures, images, baseAspect]);
+
   // Hide all instances at origin before useFrame positions them
   useEffect(() => {
     const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -305,10 +326,14 @@ function InstancedPhotoFrames({
       const rx = bp.x * cosA - bp.z * sinA;
       const rz = bp.x * sinA + bp.z * cosA;
 
+      // Calculate aspect scale for this image
+      const ratio = imageRatios[texIdx] ?? baseAspect;
+      const scaleX = Math.max(0.4, Math.min(2.0, ratio / baseAspect));
+
       // Billboard facing camera (positions are in world space — billboard is correct)
       dummy.position.set(rx, bp.y, rz);
       dummy.quaternion.copy(cam);
-      dummy.scale.setScalar(1);
+      dummy.scale.set(scaleX, 1, 1);
       dummy.updateMatrix();
 
       // Photo instance
@@ -338,11 +363,14 @@ function InstancedPhotoFrames({
   useEffect(() => {
     const fn = (instanceId: number): MemoryModalOrigin | null => {
       const angle = diskAngleRef.current ?? 0;
+      const texIdx = instanceId % texLen;
+      const ratio = imageRatios[texIdx] ?? baseAspect;
       return computeInstanceScreenRect(
         instanceId,
         scatteredPositions,
         angle,
-        camera
+        camera,
+        ratio
       );
     };
 
@@ -350,7 +378,7 @@ function InstancedPhotoFrames({
     return () => {
       setGetCurrentInstanceOrigin(undefined);
     };
-  }, [camera, scatteredPositions, diskAngleRef, setGetCurrentInstanceOrigin]);
+  }, [camera, scatteredPositions, diskAngleRef, imageRatios, texLen, baseAspect, setGetCurrentInstanceOrigin]);
 
   return (
     <>
@@ -362,7 +390,8 @@ function InstancedPhotoFrames({
           e.stopPropagation();
           if (e.instanceId !== undefined && texLen > 0) {
             const globalIdx = e.instanceId;
-            const origin = computeScreenOriginFromEvent(e);
+            const ratio = imageRatios[globalIdx % texLen] ?? baseAspect;
+            const origin = computeScreenOriginFromEvent(e, ratio);
             openMemoryModal(globalIdx % texLen, origin, globalIdx);
           }
         }}
@@ -388,7 +417,8 @@ function InstancedPhotoFrames({
           frustumCulled={false}
           onClick={(e) => {
             e.stopPropagation();
-            const origin = computeScreenOriginFromEvent(e);
+            const ratio = imageRatios[tIdx] ?? baseAspect;
+            const origin = computeScreenOriginFromEvent(e, ratio);
             const globalIdx =
               e.instanceId !== undefined ? e.instanceId * texLen + tIdx : null;
             openMemoryModal(tIdx, origin, globalIdx);
