@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type TouchEvent } from "react";
 import { ChevronLeft, ChevronRight, X, Calendar, Sparkles } from "lucide-react";
 import { useGalleryStore } from "@/store/gallery-store";
 
@@ -37,12 +37,12 @@ export function PhotoMemoryModal() {
   }, [isOpen, closeMemoryModal, nextMemory, prevMemory]);
 
   // Touch handlers for mobile swipe
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+  const handleTouchStart = useCallback((e: TouchEvent) => {
     setTouchStartX(e.touches[0].clientX);
     setTouchDeltaX(0);
   }, []);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+  const handleTouchMove = useCallback((e: TouchEvent) => {
     if (touchStartX === null) return;
     setTouchDeltaX(e.touches[0].clientX - touchStartX);
   }, [touchStartX]);

@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, type ChangeEvent, type FormEvent } from "react";
 import { Upload, Trash2, ImageIcon, Pencil, Calendar, MessageSquare, X, Check } from "lucide-react";
-import { Card, Spinner, Button, Input } from "@/components/ui";
+import { Card, Spinner, Button } from "@/components/ui";
 import { useGalleryStore, type GalleryImage } from "@/store/gallery-store";
+
+interface CloudinarySignatureResponse {
+  api_key: string;
+  timestamp: number;
+  signature: string;
+  folder: string;
+  cloud_name: string;
+}
 
 export function ImageManager() {
   const clients = useGalleryStore((s) => s.clients);
@@ -27,7 +35,7 @@ export function ImageManager() {
   const [captionError, setCaptionError] = useState<string | null>(null);
 
   const handleUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files?.length) return;
       if (!selectedClientId) {
@@ -45,11 +53,11 @@ export function ImageManager() {
           method: "POST",
         });
         if (!sigRes.ok) throw new Error("Failed to get upload signature");
-        const sig = await sigRes.json();
+        const sig = (await sigRes.json()) as CloudinarySignatureResponse;
 
         for (const file of Array.from(files)) {
           const formData = new FormData();
-          formData.append("file", file);
+          formData.append("file", file as Blob);
           formData.append("api_key", sig.api_key);
           formData.append("timestamp", String(sig.timestamp));
           formData.append("signature", sig.signature);
@@ -112,7 +120,7 @@ export function ImageManager() {
     setCaptionError(null);
   }, []);
 
-  const handleSaveCaption = useCallback(async (e: React.FormEvent) => {
+  const handleSaveCaption = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     if (!editingImage) return;
 
