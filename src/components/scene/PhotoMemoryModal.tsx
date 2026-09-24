@@ -420,22 +420,24 @@ export function PhotoMemoryModal() {
         }}
       >
         {/* Subtle decorative warm glow */}
-        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-3xl bg-[#e8a87c]/20 blur-3xl opacity-60" />
+        <div className="pointer-events-none absolute -inset-6 -z-10 bg-[#e8a87c]/20 blur-3xl opacity-60" />
 
-        {/* Unified Authentic Polaroid / Photo Frame: EXACT WIDTH = PHOTO WIDTH + 24px */}
+        {/* Unified Authentic Polaroid / Photo Frame: EXACT WIDTH = PHOTO WIDTH + 24px, RUNCING / SHARP EDGES */}
         <div
-          className="relative flex flex-col items-center rounded-2xl bg-[#ffffff] shadow-[0_25px_60px_-10px_rgba(0,0,0,0.85),0_10px_30px_rgba(0,0,0,0.4),0_0_40px_rgba(232,168,124,0.18)] border border-white/80 transition-all duration-300 ease-out select-none"
+          className="relative flex flex-col items-center rounded-none bg-[#ffffff] shadow-[0_25px_60px_-10px_rgba(0,0,0,0.85),0_10px_30px_rgba(0,0,0,0.4),0_0_40px_rgba(232,168,124,0.18)] border border-white/80 transition-all duration-300 ease-out select-none"
           style={{
             width: `${photoDims.w + 24}px`,
             padding: "12px 12px 16px 12px",
+            borderRadius: 0,
           }}
         >
-          {/* Photo Container: EXACT WIDTH & HEIGHT matching the aspect ratio */}
+          {/* Photo Container: EXACT WIDTH & HEIGHT matching the aspect ratio, SHARP EDGES */}
           <div
-            className="relative overflow-hidden rounded-xl bg-black/5 shadow-inner transition-all duration-300"
+            className="relative overflow-hidden rounded-none bg-black/5 shadow-inner transition-all duration-300"
             style={{
               width: `${photoDims.w}px`,
               height: `${photoDims.h}px`,
+              borderRadius: 0,
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -444,6 +446,7 @@ export function PhotoMemoryModal() {
               src={currentImage.url}
               alt={currentImage.caption || `Kenangan ${memoryNumber}`}
               className="w-full h-full object-cover select-none transition-opacity duration-300 animate-in fade-in"
+              style={{ borderRadius: 0 }}
               draggable={false}
               onLoad={(e) => {
                 const img = e.currentTarget;
